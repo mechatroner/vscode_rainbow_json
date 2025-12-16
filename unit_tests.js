@@ -1,5 +1,5 @@
 // Import the tokenize_line function
-const { tokenize_line: tokenize_json_line } = require('./json_parse.js');
+const { tokenize_json_line } = require('./json_parse.js');
 
 // Simple test runner
 function assert(condition, message) {
@@ -46,7 +46,7 @@ test('Whitespace only returns empty array', () => {
 test('String token', () => {
     const result = tokenize_json_line('"hello world"');
     assert(result.length === 1, 'Expected 1 token');
-    assert(result[0].token_type === 'String', 'Expected String type');
+    assert(result[0].string, 'Expected string attribute to be true');
     assert(result[0].value === '"hello world"', 'Expected correct value');
 });
 
@@ -59,7 +59,7 @@ test('String with escaped characters', () => {
 test('Integer number', () => {
     const result = tokenize_json_line('42');
     assert(result.length === 1, 'Expected 1 token');
-    assert(result[0].token_type === 'Number', 'Expected Number type');
+    assert(result[0].number, 'Expected number attribute to be true');
     assert(result[0].value === '42', 'Expected correct value');
 });
 
@@ -85,7 +85,7 @@ test('Zero', () => {
 
 test('Boolean true', () => {
     const result = tokenize_json_line('true');
-    assert(result[0].token_type === 'Constant', 'Expected Constant type');
+    assert(result[0].constant, 'Expected constant attribute to be true');
     assert(result[0].value === 'true', 'Expected true');
 });
 
@@ -101,50 +101,50 @@ test('Null constant', () => {
 
 test('BraceOpen token', () => {
     const result = tokenize_json_line('{');
-    assert(result[0].token_type === 'BraceOpen', 'Expected BraceOpen');
+    assert(result[0].brace_open, 'Expected brace_open attribute to be true');
 });
 
 test('BraceClose token', () => {
     const result = tokenize_json_line('}');
-    assert(result[0].token_type === 'BraceClose', 'Expected BraceClose');
+    assert(result[0].brace_close, 'Expected brace_close attribute to be true');
 });
 
 test('BracketOpen token', () => {
     const result = tokenize_json_line('[');
-    assert(result[0].token_type === 'BracketOpen', 'Expected BracketOpen');
+    assert(result[0].bracket_open, 'Expected bracket_open attribute to be true');
 });
 
 test('BracketClose token', () => {
     const result = tokenize_json_line(']');
-    assert(result[0].token_type === 'BracketClose', 'Expected BracketClose');
+    assert(result[0].bracket_close, 'Expected bracket_close attribute to be true');
 });
 
 test('Colon token', () => {
     const result = tokenize_json_line(':');
-    assert(result[0].token_type === 'Colon', 'Expected Colon');
+    assert(result[0].colon, 'Expected colon attribute to be true');
 });
 
 test('Comma token', () => {
     const result = tokenize_json_line(',');
-    assert(result[0].token_type === 'Comma', 'Expected Comma');
+    assert(result[0].comma, 'Expected comma attribute to be true');
 });
 
 test('Simple object structure', () => {
     const result = tokenize_json_line('{"key": "value"}');
     assert(result.length === 5, 'Expected 5 tokens');
-    assert(result[0].token_type === 'BraceOpen', 'Expected BraceOpen');
-    assert(result[1].token_type === 'String', 'Expected String');
-    assert(result[2].token_type === 'Colon', 'Expected Colon');
-    assert(result[3].token_type === 'String', 'Expected String');
-    assert(result[4].token_type === 'BraceClose', 'Expected BraceClose');
+    assert(result[0].brace_open, 'Expected brace_open');
+    assert(result[1].string, 'Expected string');
+    assert(result[2].colon, 'Expected colon');
+    assert(result[3].string, 'Expected string');
+    assert(result[4].brace_close, 'Expected brace_close');
 });
 
 test('Simple array structure', () => {
     const result = tokenize_json_line('[1, 2, 3]');
     assert(result.length === 7, 'Expected 7 tokens');
-    assert(result[0].token_type === 'BracketOpen', 'Expected BracketOpen');
-    assert(result[1].token_type === 'Number', 'Expected Number');
-    assert(result[2].token_type === 'Comma', 'Expected Comma');
+    assert(result[0].bracket_open, 'Expected bracket_open');
+    assert(result[1].number, 'Expected number');
+    assert(result[2].comma, 'Expected comma');
 });
 
 test('Mixed types', () => {
