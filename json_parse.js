@@ -104,6 +104,12 @@ const OBJECT_NODE_TYPE = 'OBJECT';
 const ARRAY_NODE_TYPE = 'ARRAY';
 const SCALAR_NODE_TYPE = 'SCALAR';
 
+// Parser states
+const STATE_EXPECT_KEY = 'EXPECT_KEY';
+const STATE_EXPECT_COLON = 'EXPECT_COLON';
+const STATE_EXPECT_VALUE = 'EXPECT_VALUE';
+const STATE_EXPECT_COMMA_OR_END = 'EXPECT_COMMA_OR_END';
+
 class RainbowJsonNode {
     constructor(node_type, parent_key, parent_array_index, start_position) {
         this.node_type = node_type;
@@ -115,8 +121,6 @@ class RainbowJsonNode {
     }
 }
 
-
-
 function consume_record(tokens, token_idx) {
     if (token_idx >= tokens.length) {
         return [null, token_idx];
@@ -125,17 +129,128 @@ function consume_record(tokens, token_idx) {
     if (!start_token.brace_open && !start_token.bracket_open) {
         return [null, token_idx];
     }
-    let root_node_type = start_token.brace_open ? OBJECT_NODE_TYPE : ARRAY_NODE_TYPE;
-    let root = new RainbowJsonNode(root_node_type, /*parent_key=*/null, /*parent_array_index=*/null, new Position(start_token.line_num, start_token.position));
-    let braces_stack = []; // Do we really need this?
-    braces_stack.push(start_token);
-    token_idx += 1;
-    while (braces_stack.length) {
 
+    let root_node_type = start_token.brace_open ? OBJECT_NODE_TYPE : ARRAY_NODE_TYPE;
+    let root = new RainbowJsonNode(root_node_type, null, null, new Position(start_token.line_num, start_token.position));
+
+    // Stack entries: { node, state, array_index, current_key }
+    let stack = [{
+        node: root,
+        state: root_node_type === OBJECT_NODE_TYPE ? STATE_EXPECT_KEY : STATE_EXPECT_VALUE,
+        array_index: 0,
+        current_key: null
+    }];
+
+    token_idx += 1;
+
+    while (token_idx < tokens.length && stack.length > 0) {
+        let token = tokens[token_idx];
+        let ctx = stack[stack.length - 1];
+
+        // Handle empty containers
+        if ((token.brace_close || token.bracket_close) &&
+            (ctx.state === STATE_EXPECT_KEY || ctx.state === STATE_EXPECT_VALUE) &&
+            ctx.node.children.length === 0) {
+            ctx.state = STATE_EXPECT_COMMA_OR_END;
+        }
+
+        let transition = STATE_TRANSITIONS[ctx.state];
+        let handler = transition(token, ctx);
+
+        switch (handler.action) {
+            case 'advance':
+                token_idx += 1;
+                ctx.state = handler.next_state;
+                break;
+
+            case 'push_container':
+                let child_type = token.brace_open ? OBJECT_NODE_TYPE : ARRAY_NODE_TYPE;
+                let child_key = ctx.node.node_type === OBJECT_NODE_TYPE ? ctx.current_key : null;
+                let child_index = ctx.node.node_type === ARRAY_NODE_TYPE ? ctx.array_index : null;
+                let child_node = new RainbowJsonNode(child_type, child_key, child_index, new Position(token.line_num, token.position));
+                ctx.node.children.push(child_node);
+                ctx.state = STATE_EXPECT_COMMA_OR_END;
+                stack.push({
+                    node: child_node,
+                    state: child_type === OBJECT_NODE_TYPE ? STATE_EXPECT_KEY : STATE_EXPECT_VALUE,
+                    array_index: 0,
+                    current_key: null
+                });
+                token_idx += 1;
+                break;
+
+            case 'add_scalar':
+                let scalar_key = ctx.node.node_type === OBJECT_NODE_TYPE ? ctx.current_key : null;
+                let scalar_index = ctx.node.node_type === ARRAY_NODE_TYPE ? ctx.array_index : null;
+                let scalar_node = new RainbowJsonNode(SCALAR_NODE_TYPE, scalar_key, scalar_index, new Position(token.line_num, token.position));
+                scalar_node.end_position = new Position(token.line_num, token.position + token.value.length);
+                scalar_node.value = token.value;
+                ctx.node.children.push(scalar_node);
+                ctx.state = STATE_EXPECT_COMMA_OR_END;
+                token_idx += 1;
+                break;
+
+            case 'pop_container':
+                ctx.node.end_position = new Position(token.line_num, token.position);
+                stack.pop();
+                token_idx += 1;
+                break;
+
+            case 'error':
+                throw new Error(`${handler.message} at line ${token.line_num}, position ${token.position}`);
+        }
     }
+
+    if (stack.length > 0) {
+        throw new Error(`Unclosed brackets at end of input`);
+    }
+
     return [root, token_idx];
 }
 
+const STATE_TRANSITIONS = {
+    [STATE_EXPECT_KEY]: (token, ctx) => {
+        if (token.string) {
+            ctx.current_key = token.value;
+            return { action: 'advance', next_state: STATE_EXPECT_COLON };
+        }
+        return { action: 'error', message: 'Expected string key' };
+    },
+
+    [STATE_EXPECT_COLON]: (token, ctx) => {
+        if (token.colon) {
+            return { action: 'advance', next_state: STATE_EXPECT_VALUE };
+        }
+        return { action: 'error', message: 'Expected colon' };
+    },
+
+    [STATE_EXPECT_VALUE]: (token, ctx) => {
+        if (token.brace_open || token.bracket_open) {
+            return { action: 'push_container' };
+        }
+        if (token.string || token.number || token.constant) {
+            return { action: 'add_scalar' };
+        }
+        return { action: 'error', message: 'Expected value' };
+    },
+
+    [STATE_EXPECT_COMMA_OR_END]: (token, ctx) => {
+        if (token.comma) {
+            if (ctx.node.node_type === OBJECT_NODE_TYPE) {
+                return { action: 'advance', next_state: STATE_EXPECT_KEY };
+            } else {
+                ctx.array_index += 1;
+                return { action: 'advance', next_state: STATE_EXPECT_VALUE };
+            }
+        }
+        let is_matching_close = (ctx.node.node_type === OBJECT_NODE_TYPE && token.brace_close) ||
+                                (ctx.node.node_type === ARRAY_NODE_TYPE && token.bracket_close);
+        if (is_matching_close) {
+            return { action: 'pop_container' };
+        }
+        return { action: 'error', message: 'Expected comma or closing bracket' };
+    }
+};
 
 function parse_json_objects(lines, line_nums) {
     let tokens = [];
