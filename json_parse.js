@@ -10,6 +10,7 @@ function tokenize_json_line_in_place(line, line_num, dst_tokens) {
         { token_type: 'Whitespace', regex: /\s+/y },
         { token_type: 'Constant', regex: /true|false|null/y },
         // String match regex, takex from here: https://stackoverflow.com/a/249937/2898283
+        // It is a bit more permissive than the actual JSON string specification.
         { token_type: 'String', regex: /"(?:[^"\\]|\\.)*"/y },
         // Number: Optional negative, followed by 0 or 1-9+digits, optional fraction, optional exponent
         // Taken from here: https://stackoverflow.com/a/13340826/2898283
@@ -96,9 +97,7 @@ class Position {
 // Key -> Primitive value
 // Key -> Object (RainbowObjectNode)
 // Key -> Array
-// We can also have the same array elements
-
-// Object children have keys, Array children have indexes.
+// We can also have the same array elements because object children have keys, and array children have indexes.
 
 const OBJECT_NODE_TYPE = 'OBJECT';
 const ARRAY_NODE_TYPE = 'ARRAY';
@@ -110,6 +109,13 @@ const STATE_EXPECT_COLON = 'EXPECT_COLON';
 const STATE_EXPECT_VALUE = 'EXPECT_VALUE';
 const STATE_EXPECT_COMMA_OR_END = 'EXPECT_COMMA_OR_END';
 
+// Parser actions
+const ACTION_ADVANCE = 'advance';
+const ACTION_PUSH_CONTAINER = 'push_container';
+const ACTION_ADD_SCALAR = 'add_scalar';
+const ACTION_POP_CONTAINER = 'pop_container';
+const ACTION_ERROR = 'error';
+
 class RainbowJsonNode {
     constructor(node_type, parent_key, parent_array_index, start_position) {
         this.node_type = node_type;
@@ -117,7 +123,8 @@ class RainbowJsonNode {
         this.parent_array_index = parent_array_index; // null value means it is not an array element but was mapped directly by the key.
         this.start_position = start_position;
         this.end_position = null;
-        this.children = [];
+        this.children = []; // For container nodes.
+        this.value = null; // For scalar nodes.
     }
 }
 
@@ -158,12 +165,12 @@ function consume_record(tokens, token_idx) {
         let handler = transition(token, ctx);
 
         switch (handler.action) {
-            case 'advance':
+            case ACTION_ADVANCE:
                 token_idx += 1;
                 ctx.state = handler.next_state;
                 break;
 
-            case 'push_container':
+            case ACTION_PUSH_CONTAINER:
                 let child_type = token.brace_open ? OBJECT_NODE_TYPE : ARRAY_NODE_TYPE;
                 let child_key = ctx.node.node_type === OBJECT_NODE_TYPE ? ctx.current_key : null;
                 let child_index = ctx.node.node_type === ARRAY_NODE_TYPE ? ctx.array_index : null;
@@ -179,7 +186,7 @@ function consume_record(tokens, token_idx) {
                 token_idx += 1;
                 break;
 
-            case 'add_scalar':
+            case ACTION_ADD_SCALAR:
                 let scalar_key = ctx.node.node_type === OBJECT_NODE_TYPE ? ctx.current_key : null;
                 let scalar_index = ctx.node.node_type === ARRAY_NODE_TYPE ? ctx.array_index : null;
                 let scalar_node = new RainbowJsonNode(SCALAR_NODE_TYPE, scalar_key, scalar_index, new Position(token.line_num, token.position));
@@ -190,13 +197,13 @@ function consume_record(tokens, token_idx) {
                 token_idx += 1;
                 break;
 
-            case 'pop_container':
+            case ACTION_POP_CONTAINER:
                 ctx.node.end_position = new Position(token.line_num, token.position);
                 stack.pop();
                 token_idx += 1;
                 break;
 
-            case 'error':
+            case ACTION_ERROR:
                 throw new Error(`${handler.message} at line ${token.line_num}, position ${token.position}`);
         }
     }
@@ -212,43 +219,43 @@ const STATE_TRANSITIONS = {
     [STATE_EXPECT_KEY]: (token, ctx) => {
         if (token.string) {
             ctx.current_key = token.value;
-            return { action: 'advance', next_state: STATE_EXPECT_COLON };
+            return { action: ACTION_ADVANCE, next_state: STATE_EXPECT_COLON };
         }
-        return { action: 'error', message: 'Expected string key' };
+        return { action: ACTION_ERROR, message: 'Expected string key' };
     },
 
     [STATE_EXPECT_COLON]: (token, ctx) => {
         if (token.colon) {
-            return { action: 'advance', next_state: STATE_EXPECT_VALUE };
+            return { action: ACTION_ADVANCE, next_state: STATE_EXPECT_VALUE };
         }
-        return { action: 'error', message: 'Expected colon' };
+        return { action: ACTION_ERROR, message: 'Expected colon' };
     },
 
     [STATE_EXPECT_VALUE]: (token, ctx) => {
         if (token.brace_open || token.bracket_open) {
-            return { action: 'push_container' };
+            return { action: ACTION_PUSH_CONTAINER };
         }
         if (token.string || token.number || token.constant) {
-            return { action: 'add_scalar' };
+            return { action: ACTION_ADD_SCALAR };
         }
-        return { action: 'error', message: 'Expected value' };
+        return { action: ACTION_ERROR, message: 'Expected value' };
     },
 
     [STATE_EXPECT_COMMA_OR_END]: (token, ctx) => {
         if (token.comma) {
             if (ctx.node.node_type === OBJECT_NODE_TYPE) {
-                return { action: 'advance', next_state: STATE_EXPECT_KEY };
+                return { action: ACTION_ADVANCE, next_state: STATE_EXPECT_KEY };
             } else {
                 ctx.array_index += 1;
-                return { action: 'advance', next_state: STATE_EXPECT_VALUE };
+                return { action: ACTION_ADVANCE, next_state: STATE_EXPECT_VALUE };
             }
         }
         let is_matching_close = (ctx.node.node_type === OBJECT_NODE_TYPE && token.brace_close) ||
                                 (ctx.node.node_type === ARRAY_NODE_TYPE && token.bracket_close);
         if (is_matching_close) {
-            return { action: 'pop_container' };
+            return { action: ACTION_POP_CONTAINER };
         }
-        return { action: 'error', message: 'Expected comma or closing bracket' };
+        return { action: ACTION_ERROR, message: 'Expected comma or closing bracket' };
     }
 };
 
