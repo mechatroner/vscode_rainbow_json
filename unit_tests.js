@@ -1,5 +1,5 @@
 // Import the tokenize_line function
-const { tokenize_json_line, parse_json_objects } = require('./json_parse.js');
+const { tokenize_json_line, parse_json_objects, JsonTokenizerError, JsonSyntaxError, JsonIncompleteError } = require('./json_parse.js');
 
 // Simple test runner
 function assert(condition, message) {
@@ -8,13 +8,16 @@ function assert(condition, message) {
     }
 }
 
-function assertThrows(fn, message) {
+function assertThrows(fn, message, expectedErrorType = null) {
     try {
         fn();
         throw new Error(`Expected function to throw: ${message}`);
     } catch (e) {
         if (e.message.startsWith('Expected function to throw')) {
             throw e;
+        }
+        if (expectedErrorType && !(e instanceof expectedErrorType)) {
+            throw new Error(`Expected ${expectedErrorType.name}, got ${e.constructor.name}: ${message}`);
         }
         // Expected error, test passes
     }
@@ -211,15 +214,15 @@ test('Token positions', () => {
 });
 
 test('Invalid character throws error', () => {
-    assertThrows(() => tokenize_json_line('@'), 'Should throw on invalid character');
+    assertThrows(() => tokenize_json_line('@'), 'Should throw on invalid character', JsonTokenizerError);
 });
 
 test('Invalid character in middle throws error', () => {
-    assertThrows(() => tokenize_json_line('{"key"@ "value"}'), 'Should throw on @ character');
+    assertThrows(() => tokenize_json_line('{"key"@ "value"}'), 'Should throw on @ character', JsonTokenizerError);
 });
 
 test('Unclosed string throws error', () => {
-    assertThrows(() => tokenize_json_line('"unclosed'), 'Should throw on unclosed string');
+    assertThrows(() => tokenize_json_line('"unclosed'), 'Should throw on unclosed string', JsonTokenizerError);
 });
 
 // Parse JSON objects tests
@@ -337,31 +340,31 @@ test('Parse mixed valid and invalid content', () => {
 });
 
 test('Error on unclosed object', () => {
-    assertThrows(() => parse_json_objects(['{"key": "value"'], [1]), 'Should throw on unclosed object');
+    assertThrows(() => parse_json_objects(['{"key": "value"'], [1]), 'Should throw on unclosed object', JsonIncompleteError);
 });
 
 test('Error on unclosed array', () => {
-    assertThrows(() => parse_json_objects(['[1, 2, 3'], [1]), 'Should throw on unclosed array');
+    assertThrows(() => parse_json_objects(['[1, 2, 3'], [1]), 'Should throw on unclosed array', JsonIncompleteError);
 });
 
 test('Error on missing colon', () => {
-    assertThrows(() => parse_json_objects(['{"key" "value"}'], [1]), 'Should throw on missing colon');
+    assertThrows(() => parse_json_objects(['{"key" "value"}'], [1]), 'Should throw on missing colon', JsonSyntaxError);
 });
 
 test('Error on missing comma in object', () => {
-    assertThrows(() => parse_json_objects(['{"a": 1 "b": 2}'], [1]), 'Should throw on missing comma');
+    assertThrows(() => parse_json_objects(['{"a": 1 "b": 2}'], [1]), 'Should throw on missing comma', JsonSyntaxError);
 });
 
 test('Error on missing comma in array', () => {
-    assertThrows(() => parse_json_objects(['[1 2 3]'], [1]), 'Should throw on missing comma in array');
+    assertThrows(() => parse_json_objects(['[1 2 3]'], [1]), 'Should throw on missing comma in array', JsonSyntaxError);
 });
 
 test('Error on trailing comma in object', () => {
-    assertThrows(() => parse_json_objects(['{"key": "value",}'], [1]), 'Should throw on trailing comma');
+    assertThrows(() => parse_json_objects(['{"key": "value",}'], [1]), 'Should throw on trailing comma', JsonSyntaxError);
 });
 
 test('Error on mismatched brackets', () => {
-    assertThrows(() => parse_json_objects(['{"key": [1, 2}'], [1]), 'Should throw on mismatched brackets');
+    assertThrows(() => parse_json_objects(['{"key": [1, 2}'], [1]), 'Should throw on mismatched brackets', JsonSyntaxError);
 });
 
 test('Parse empty object in array', () => {

@@ -1,4 +1,31 @@
 // Json tokens can't span multiple lines so we can tokenize them on line-by-line basis which is nice.
+
+// Custom error types
+class JsonTokenizerError extends Error {
+    constructor(message, line_num, position) {
+        super(message);
+        this.name = 'JsonTokenizerError';
+        this.line_num = line_num;
+        this.position = position;
+    }
+}
+
+class JsonSyntaxError extends Error {
+    constructor(message, line_num, position) {
+        super(message);
+        this.name = 'JsonSyntaxError';
+        this.line_num = line_num;
+        this.position = position;
+    }
+}
+
+class JsonIncompleteError extends Error {
+    constructor(message) {
+        super(message);
+        this.name = 'JsonIncompleteError';
+    }
+}
+
 function tokenize_json_line_in_place(line, line_num, dst_tokens) {
     let cursor = 0;
     const length = line.length;
@@ -71,7 +98,7 @@ function tokenize_json_line_in_place(line, line_num, dst_tokens) {
         }
 
         if (!matchFound) {
-            throw new Error(`Unexpected character at position ${cursor}: "${line[cursor]}"`);
+            throw new JsonTokenizerError(`Unexpected character: "${line[cursor]}"`, line_num, cursor);
         }
     }
 }
@@ -314,14 +341,14 @@ function consume_json_record(tokens, token_idx) {
         
         if (!handled) {
             let error_msg = generate_error_message(ctx.current_nfa_states);
-            throw new Error(`${error_msg} at line ${token.line_num}, position ${token.position}, got "${token.value}"`);
+            throw new JsonSyntaxError(`${error_msg}, got "${token.value}"`, token.line_num, token.position);
         }
         
         token_idx += 1;
     }
     
     if (pda_stack.length > 0) {
-        throw new Error(`Unclosed brackets at end of input`);
+        throw new JsonIncompleteError(`Unclosed brackets at end of input`);
     }
     
     return [root, token_idx];
@@ -343,8 +370,8 @@ function parse_json_objects(lines, line_nums) {
             [previous_record, token_idx] = consume_json_record(tokens, token_idx);
         } else {
             previous_record = null;
+            token_idx += 1;
         }
-        token_idx += 1;
     }
     if (previous_record) {
         records.push(previous_record);
@@ -352,4 +379,4 @@ function parse_json_objects(lines, line_nums) {
     return records;
 }
 
-module.exports = { tokenize_json_line, parse_json_objects };
+module.exports = { tokenize_json_line, parse_json_objects, JsonTokenizerError, JsonSyntaxError, JsonIncompleteError };
