@@ -103,19 +103,6 @@ const OBJECT_NODE_TYPE = 'OBJECT';
 const ARRAY_NODE_TYPE = 'ARRAY';
 const SCALAR_NODE_TYPE = 'SCALAR';
 
-// Parser states
-const STATE_EXPECT_KEY = 'EXPECT_KEY';
-const STATE_EXPECT_COLON = 'EXPECT_COLON';
-const STATE_EXPECT_VALUE = 'EXPECT_VALUE';
-const STATE_EXPECT_COMMA_OR_END = 'EXPECT_COMMA_OR_END';
-
-// Parser actions
-const ACTION_ADVANCE = 'advance';
-const ACTION_PUSH_CONTAINER = 'push_container';
-const ACTION_ADD_SCALAR = 'add_scalar';
-const ACTION_POP_CONTAINER = 'pop_container';
-const ACTION_ERROR = 'error';
-
 class RainbowJsonNode {
     constructor(node_type, parent_key, parent_array_index, start_position) {
         this.node_type = node_type;
@@ -128,136 +115,218 @@ class RainbowJsonNode {
     }
 }
 
-function consume_record(tokens, token_idx) {
+class PDAStackFrame {
+    constructor(node) {
+        this.node = node;
+        this.current_nfa_states = [];
+        this.current_array_index = 0;
+        this.current_key = null;
+    }
+}
+
+class AutomataState {
+    constructor(handler_function, error_string) {
+        this.handler_function = handler_function;
+        this.error_string = error_string;
+    }
+}
+
+// Forward declarations - will be defined after all handlers
+let expect_key_state, expect_colon_state, expect_value_state, expect_comma_state, expect_object_end_state, expect_array_end_state;
+
+function handle_key_token(pda_stack, token) {
+    if (!token.string) {
+        return false;
+    }
+    let ctx = pda_stack[pda_stack.length - 1];
+    ctx.current_key = token.value;
+    ctx.current_nfa_states = [expect_colon_state];
+    return true;
+}
+
+function handle_colon_token(pda_stack, token) {
+    if (!token.colon) {
+        return false;
+    }
+    let ctx = pda_stack[pda_stack.length - 1];
+    ctx.current_nfa_states = [expect_value_state];
+    return true;
+}
+
+function handle_scalar_value(pda_stack, token) {
+    if (!token.string && !token.number && !token.constant) {
+        return false;
+    }
+    let ctx = pda_stack[pda_stack.length - 1];
+    let scalar_key = ctx.node.node_type === OBJECT_NODE_TYPE ? ctx.current_key : null;
+    let scalar_index = ctx.node.node_type === ARRAY_NODE_TYPE ? ctx.current_array_index : null;
+    let scalar_node = new RainbowJsonNode(SCALAR_NODE_TYPE, scalar_key, scalar_index, new Position(token.line_num, token.position));
+    scalar_node.end_position = new Position(token.line_num, token.position + token.value.length);
+    scalar_node.value = token.value;
+    ctx.node.children.push(scalar_node);
+    
+    if (ctx.node.node_type === OBJECT_NODE_TYPE) {
+        ctx.current_nfa_states = [expect_comma_state, expect_object_end_state];
+    } else {
+        ctx.current_nfa_states = [expect_comma_state, expect_array_end_state];
+    }
+    return true;
+}
+
+function handle_open_brace(pda_stack, token) {
+    if (!token.brace_open) {
+        return false;
+    }
+    let ctx = pda_stack[pda_stack.length - 1];
+    let child_key = ctx.node.node_type === OBJECT_NODE_TYPE ? ctx.current_key : null;
+    let child_index = ctx.node.node_type === ARRAY_NODE_TYPE ? ctx.current_array_index : null;
+    let child_node = new RainbowJsonNode(OBJECT_NODE_TYPE, child_key, child_index, new Position(token.line_num, token.position));
+    ctx.node.children.push(child_node);
+    
+    if (ctx.node.node_type === OBJECT_NODE_TYPE) {
+        ctx.current_nfa_states = [expect_comma_state, expect_object_end_state];
+    } else {
+        ctx.current_nfa_states = [expect_comma_state, expect_array_end_state];
+    }
+    
+    let new_frame = new PDAStackFrame(child_node);
+    new_frame.current_nfa_states = [expect_key_state, expect_object_end_state];
+    pda_stack.push(new_frame);
+    return true;
+}
+
+function handle_open_bracket(pda_stack, token) {
+    if (!token.bracket_open) {
+        return false;
+    }
+    let ctx = pda_stack[pda_stack.length - 1];
+    let child_key = ctx.node.node_type === OBJECT_NODE_TYPE ? ctx.current_key : null;
+    let child_index = ctx.node.node_type === ARRAY_NODE_TYPE ? ctx.current_array_index : null;
+    let child_node = new RainbowJsonNode(ARRAY_NODE_TYPE, child_key, child_index, new Position(token.line_num, token.position));
+    ctx.node.children.push(child_node);
+    
+    if (ctx.node.node_type === OBJECT_NODE_TYPE) {
+        ctx.current_nfa_states = [expect_comma_state, expect_object_end_state];
+    } else {
+        ctx.current_nfa_states = [expect_comma_state, expect_array_end_state];
+    }
+    
+    let new_frame = new PDAStackFrame(child_node);
+    new_frame.current_nfa_states = [expect_value_state, expect_array_end_state];
+    pda_stack.push(new_frame);
+    return true;
+}
+
+function handle_comma(pda_stack, token) {
+    if (!token.comma) {
+        return false;
+    }
+    let ctx = pda_stack[pda_stack.length - 1];
+    if (ctx.node.node_type === OBJECT_NODE_TYPE) {
+        ctx.current_nfa_states = [expect_key_state];
+    } else {
+        ctx.current_array_index += 1;
+        ctx.current_nfa_states = [expect_value_state];
+    }
+    return true;
+}
+
+function handle_object_end(pda_stack, token) {
+    if (!token.brace_close) {
+        return false;
+    }
+    let ctx = pda_stack[pda_stack.length - 1];
+    if (ctx.node.node_type !== OBJECT_NODE_TYPE) {
+        return false;
+    }
+    ctx.node.end_position = new Position(token.line_num, token.position);
+    pda_stack.pop();
+    return true;
+}
+
+function handle_array_end(pda_stack, token) {
+    if (!token.bracket_close) {
+        return false;
+    }
+    let ctx = pda_stack[pda_stack.length - 1];
+    if (ctx.node.node_type !== ARRAY_NODE_TYPE) {
+        return false;
+    }
+    ctx.node.end_position = new Position(token.line_num, token.position);
+    pda_stack.pop();
+    return true;
+}
+
+// Now define the automata states
+expect_key_state = new AutomataState(handle_key_token, 'string key');
+expect_colon_state = new AutomataState(handle_colon_token, 'colon');
+expect_value_state = new AutomataState((pda_stack, token) => {
+    // Value can be scalar, object, or array
+    return handle_scalar_value(pda_stack, token) || 
+           handle_open_brace(pda_stack, token) || 
+           handle_open_bracket(pda_stack, token);
+}, 'value');
+expect_comma_state = new AutomataState(handle_comma, 'comma');
+expect_object_end_state = new AutomataState(handle_object_end, 'closing brace');
+expect_array_end_state = new AutomataState(handle_array_end, 'closing bracket');
+
+function generate_error_message(nfa_states) {
+    let expected_parts = nfa_states.map(state => state.error_string);
+    if (expected_parts.length === 1) {
+        return `Expected ${expected_parts[0]}`;
+    }
+    let last = expected_parts.pop();
+    return `Expected ${expected_parts.join(', ')} or ${last}`;
+}
+
+function consume_json_record(tokens, token_idx) {
     if (token_idx >= tokens.length) {
         return [null, token_idx];
     }
+    
     let start_token = tokens[token_idx];
     if (!start_token.brace_open && !start_token.bracket_open) {
         return [null, token_idx];
     }
-
+    
     let root_node_type = start_token.brace_open ? OBJECT_NODE_TYPE : ARRAY_NODE_TYPE;
     let root = new RainbowJsonNode(root_node_type, null, null, new Position(start_token.line_num, start_token.position));
-
-    // Stack entries: { node, state, array_index, current_key }
-    let stack = [{
-        node: root,
-        state: root_node_type === OBJECT_NODE_TYPE ? STATE_EXPECT_KEY : STATE_EXPECT_VALUE,
-        array_index: 0,
-        current_key: null
-    }];
-
+    
+    let pda_stack = [new PDAStackFrame(root)];
+    if (root_node_type === OBJECT_NODE_TYPE) {
+        pda_stack[0].current_nfa_states = [expect_key_state, expect_object_end_state];
+    } else {
+        pda_stack[0].current_nfa_states = [expect_value_state, expect_array_end_state];
+    }
+    
     token_idx += 1;
-
-    while (token_idx < tokens.length && stack.length > 0) {
+    
+    while (token_idx < tokens.length && pda_stack.length > 0) {
         let token = tokens[token_idx];
-        let ctx = stack[stack.length - 1];
-
-        // Handle empty containers
-        if ((token.brace_close || token.bracket_close) &&
-            (ctx.state === STATE_EXPECT_KEY || ctx.state === STATE_EXPECT_VALUE) &&
-            ctx.node.children.length === 0) {
-            ctx.state = STATE_EXPECT_COMMA_OR_END;
-        }
-
-        let transition = STATE_TRANSITIONS[ctx.state];
-        let handler = transition(token, ctx);
-
-        switch (handler.action) {
-            case ACTION_ADVANCE:
-                token_idx += 1;
-                ctx.state = handler.next_state;
+        let ctx = pda_stack[pda_stack.length - 1];
+        
+        let handled = false;
+        for (let state of ctx.current_nfa_states) {
+            if (state.handler_function(pda_stack, token)) {
+                handled = true;
                 break;
-
-            case ACTION_PUSH_CONTAINER:
-                let child_type = token.brace_open ? OBJECT_NODE_TYPE : ARRAY_NODE_TYPE;
-                let child_key = ctx.node.node_type === OBJECT_NODE_TYPE ? ctx.current_key : null;
-                let child_index = ctx.node.node_type === ARRAY_NODE_TYPE ? ctx.array_index : null;
-                let child_node = new RainbowJsonNode(child_type, child_key, child_index, new Position(token.line_num, token.position));
-                ctx.node.children.push(child_node);
-                ctx.state = STATE_EXPECT_COMMA_OR_END;
-                stack.push({
-                    node: child_node,
-                    state: child_type === OBJECT_NODE_TYPE ? STATE_EXPECT_KEY : STATE_EXPECT_VALUE,
-                    array_index: 0,
-                    current_key: null
-                });
-                token_idx += 1;
-                break;
-
-            case ACTION_ADD_SCALAR:
-                let scalar_key = ctx.node.node_type === OBJECT_NODE_TYPE ? ctx.current_key : null;
-                let scalar_index = ctx.node.node_type === ARRAY_NODE_TYPE ? ctx.array_index : null;
-                let scalar_node = new RainbowJsonNode(SCALAR_NODE_TYPE, scalar_key, scalar_index, new Position(token.line_num, token.position));
-                scalar_node.end_position = new Position(token.line_num, token.position + token.value.length);
-                scalar_node.value = token.value;
-                ctx.node.children.push(scalar_node);
-                ctx.state = STATE_EXPECT_COMMA_OR_END;
-                token_idx += 1;
-                break;
-
-            case ACTION_POP_CONTAINER:
-                ctx.node.end_position = new Position(token.line_num, token.position);
-                stack.pop();
-                token_idx += 1;
-                break;
-
-            case ACTION_ERROR:
-                throw new Error(`${handler.message} at line ${token.line_num}, position ${token.position}`);
-        }
-    }
-
-    if (stack.length > 0) {
-        throw new Error(`Unclosed brackets at end of input`);
-    }
-
-    return [root, token_idx];
-}
-
-const STATE_TRANSITIONS = {
-    [STATE_EXPECT_KEY]: (token, ctx) => {
-        if (token.string) {
-            ctx.current_key = token.value;
-            return { action: ACTION_ADVANCE, next_state: STATE_EXPECT_COLON };
-        }
-        return { action: ACTION_ERROR, message: 'Expected string key' };
-    },
-
-    [STATE_EXPECT_COLON]: (token, ctx) => {
-        if (token.colon) {
-            return { action: ACTION_ADVANCE, next_state: STATE_EXPECT_VALUE };
-        }
-        return { action: ACTION_ERROR, message: 'Expected colon' };
-    },
-
-    [STATE_EXPECT_VALUE]: (token, ctx) => {
-        if (token.brace_open || token.bracket_open) {
-            return { action: ACTION_PUSH_CONTAINER };
-        }
-        if (token.string || token.number || token.constant) {
-            return { action: ACTION_ADD_SCALAR };
-        }
-        return { action: ACTION_ERROR, message: 'Expected value' };
-    },
-
-    [STATE_EXPECT_COMMA_OR_END]: (token, ctx) => {
-        if (token.comma) {
-            if (ctx.node.node_type === OBJECT_NODE_TYPE) {
-                return { action: ACTION_ADVANCE, next_state: STATE_EXPECT_KEY };
-            } else {
-                ctx.array_index += 1;
-                return { action: ACTION_ADVANCE, next_state: STATE_EXPECT_VALUE };
             }
         }
-        let is_matching_close = (ctx.node.node_type === OBJECT_NODE_TYPE && token.brace_close) ||
-                                (ctx.node.node_type === ARRAY_NODE_TYPE && token.bracket_close);
-        if (is_matching_close) {
-            return { action: ACTION_POP_CONTAINER };
+        
+        if (!handled) {
+            let error_msg = generate_error_message(ctx.current_nfa_states);
+            throw new Error(`${error_msg} at line ${token.line_num}, position ${token.position}, got "${token.value}"`);
         }
-        return { action: ACTION_ERROR, message: 'Expected comma or closing bracket' };
+        
+        token_idx += 1;
     }
-};
+    
+    if (pda_stack.length > 0) {
+        throw new Error(`Unclosed brackets at end of input`);
+    }
+    
+    return [root, token_idx];
+}
 
 function parse_json_objects(lines, line_nums) {
     let tokens = [];
@@ -272,7 +341,7 @@ function parse_json_objects(lines, line_nums) {
             if (previous_record) {
                 records.push(previous_record);
             }
-            [previous_record, token_idx] = consume_record(tokens, token_idx);
+            [previous_record, token_idx] = consume_json_record(tokens, token_idx);
         } else {
             previous_record = null;
         }
