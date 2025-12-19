@@ -20,19 +20,58 @@ function assertThrows(fn, message) {
     }
 }
 
+// Test registry
+const allTests = [];
+let testIdCounter = 1;
+
 function test(name, fn) {
-    try {
-        fn();
-        console.log(`OK: ${name}`);
-    } catch (e) {
-        console.error(`FAIL: ${name}`);
-        console.error(`  ${e.message}`);
-    }
+    const testId = testIdCounter++;
+    allTests.push({ id: testId, name, fn });
 }
 
-// Run tests
-console.log('Running tokenize_line tests...\n');
+function runTests(testIds = null) {
+    let testsToRun = allTests;
 
+    if (testIds && testIds.length > 0) {
+        const idSet = new Set(testIds);
+        testsToRun = allTests.filter(t => idSet.has(t.id));
+
+        if (testsToRun.length === 0) {
+            console.error('No tests found with the specified IDs');
+            return;
+        }
+    }
+
+    let passCount = 0;
+    let failCount = 0;
+
+    for (const { id, name, fn } of testsToRun) {
+        try {
+            fn();
+            console.log(`OK [${id}]: ${name}`);
+            passCount++;
+        } catch (e) {
+            console.error(`FAIL [${id}]: ${name}`);
+            console.error(`  ${e.message}`);
+            failCount++;
+        }
+    }
+
+    console.log(`\nResults: ${passCount} passed, ${failCount} failed, ${testsToRun.length} total`);
+}
+
+function listTests() {
+    console.log('Available tests:\n');
+    for (const { id, name } of allTests) {
+        console.log(`  [${id}] ${name}`);
+    }
+    console.log(`\nTotal: ${allTests.length} tests`);
+}
+
+// Define all tests
+console.log('Registering tests...\n');
+
+// Tokenize tests
 test('Empty string returns empty array', () => {
     const result = tokenize_json_line('');
     assert(result.length === 0, 'Expected empty array');
@@ -183,11 +222,7 @@ test('Unclosed string throws error', () => {
     assertThrows(() => tokenize_json_line('"unclosed'), 'Should throw on unclosed string');
 });
 
-console.log('\nTests completed!');
-
 // Parse JSON objects tests
-console.log('\n\nRunning parse_json_objects tests...\n');
-
 test('Parse empty object', () => {
     const result = parse_json_objects(['{}'], [1]);
     assert(result.length === 1, 'Expected 1 record');
@@ -341,4 +376,35 @@ test('Parse empty array in object', () => {
     assert(result[0].children[0].children.length === 0, 'Expected no children in empty array');
 });
 
-console.log('\nAll parse_json_objects tests completed!');
+// Parse command line arguments
+const args = process.argv.slice(2);
+
+if (args.length > 0) {
+    if (args[0] === '--list' || args[0] === '-l') {
+        listTests();
+    } else if (args[0] === '--help' || args[0] === '-h') {
+        console.log('Usage: node unit_tests.js [options] [test_ids...]');
+        console.log('\nOptions:');
+        console.log('  --list, -l    List all available tests with their IDs');
+        console.log('  --help, -h    Show this help message');
+        console.log('\nExamples:');
+        console.log('  node unit_tests.js           # Run all tests');
+        console.log('  node unit_tests.js 1 5 10    # Run tests with IDs 1, 5, and 10');
+        console.log('  node unit_tests.js --list    # List all tests');
+    } else {
+        // Parse test IDs
+        const testIds = args.map(arg => {
+            const id = parseInt(arg, 10);
+            if (isNaN(id)) {
+                console.error(`Invalid test ID: ${arg}`);
+                process.exit(1);
+            }
+            return id;
+        });
+        console.log(`Running ${testIds.length} selected test(s)...\n`);
+        runTests(testIds);
+    }
+} else {
+    console.log('Running all tests...\n');
+    runTests();
+}
