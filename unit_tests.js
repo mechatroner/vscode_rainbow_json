@@ -1,5 +1,5 @@
 // Import the tokenize_line function
-const { tokenize_json_line } = require('./json_parse.js');
+const { tokenize_json_line, parse_json_objects } = require('./json_parse.js');
 
 // Simple test runner
 function assert(condition, message) {
@@ -184,3 +184,161 @@ test('Unclosed string throws error', () => {
 });
 
 console.log('\nTests completed!');
+
+// Parse JSON objects tests
+console.log('\n\nRunning parse_json_objects tests...\n');
+
+test('Parse empty object', () => {
+    const result = parse_json_objects(['{}'], [1]);
+    assert(result.length === 1, 'Expected 1 record');
+    assert(result[0].node_type === 'OBJECT', 'Expected OBJECT type');
+    assert(result[0].children.length === 0, 'Expected no children');
+});
+
+test('Parse empty array', () => {
+    const result = parse_json_objects(['[]'], [1]);
+    assert(result.length === 1, 'Expected 1 record');
+    assert(result[0].node_type === 'ARRAY', 'Expected ARRAY type');
+    assert(result[0].children.length === 0, 'Expected no children');
+});
+
+test('Parse simple object with one key-value', () => {
+    const result = parse_json_objects(['{"name": "John"}'], [1]);
+    assert(result.length === 1, 'Expected 1 record');
+    assert(result[0].children.length === 1, 'Expected 1 child');
+    assert(result[0].children[0].parent_key === '"name"', 'Expected correct key');
+    assert(result[0].children[0].value === '"John"', 'Expected correct value');
+});
+
+test('Parse object with multiple keys', () => {
+    const result = parse_json_objects(['{"name": "John", "age": 30, "active": true}'], [1]);
+    assert(result.length === 1, 'Expected 1 record');
+    assert(result[0].children.length === 3, 'Expected 3 children');
+    assert(result[0].children[0].parent_key === '"name"', 'Expected name key');
+    assert(result[0].children[1].parent_key === '"age"', 'Expected age key');
+    assert(result[0].children[2].parent_key === '"active"', 'Expected active key');
+});
+
+test('Parse simple array with scalars', () => {
+    const result = parse_json_objects(['[1, 2, 3]'], [1]);
+    assert(result.length === 1, 'Expected 1 record');
+    assert(result[0].children.length === 3, 'Expected 3 children');
+    assert(result[0].children[0].parent_array_index === 0, 'Expected index 0');
+    assert(result[0].children[1].parent_array_index === 1, 'Expected index 1');
+    assert(result[0].children[2].parent_array_index === 2, 'Expected index 2');
+    assert(result[0].children[0].value === '1', 'Expected value 1');
+});
+
+test('Parse nested object', () => {
+    const result = parse_json_objects(['{"person": {"name": "John", "age": 30}}'], [1]);
+    assert(result.length === 1, 'Expected 1 record');
+    assert(result[0].children.length === 1, 'Expected 1 child');
+    assert(result[0].children[0].node_type === 'OBJECT', 'Expected nested OBJECT');
+    assert(result[0].children[0].children.length === 2, 'Expected 2 grandchildren');
+});
+
+test('Parse nested array', () => {
+    const result = parse_json_objects(['[[1, 2], [3, 4]]'], [1]);
+    assert(result.length === 1, 'Expected 1 record');
+    assert(result[0].children.length === 2, 'Expected 2 children');
+    assert(result[0].children[0].node_type === 'ARRAY', 'Expected nested ARRAY');
+    assert(result[0].children[0].children.length === 2, 'Expected 2 elements in first array');
+});
+
+test('Parse array of objects', () => {
+    const result = parse_json_objects(['[{"id": 1}, {"id": 2}]'], [1]);
+    assert(result.length === 1, 'Expected 1 record');
+    assert(result[0].children.length === 2, 'Expected 2 children');
+    assert(result[0].children[0].node_type === 'OBJECT', 'Expected OBJECT at index 0');
+    assert(result[0].children[1].node_type === 'OBJECT', 'Expected OBJECT at index 1');
+});
+
+test('Parse object with array value', () => {
+    const result = parse_json_objects(['{"tags": ["red", "blue"]}'], [1]);
+    assert(result.length === 1, 'Expected 1 record');
+    assert(result[0].children[0].node_type === 'ARRAY', 'Expected ARRAY value');
+    assert(result[0].children[0].children.length === 2, 'Expected 2 array elements');
+});
+
+test('Parse multiple objects on separate lines', () => {
+    const result = parse_json_objects(['{"id": 1}', '{"id": 2}'], [1, 2]);
+    assert(result.length === 2, 'Expected 2 records');
+    assert(result[0].children[0].value === '1', 'Expected id 1');
+    assert(result[1].children[0].value === '2', 'Expected id 2');
+});
+
+test('Parse object with all scalar types', () => {
+    const result = parse_json_objects(['{"str": "text", "num": 42, "bool": true, "null": null}'], [1]);
+    assert(result[0].children.length === 4, 'Expected 4 children');
+    assert(result[0].children[0].value === '"text"', 'Expected string value');
+    assert(result[0].children[1].value === '42', 'Expected number value');
+    assert(result[0].children[2].value === 'true', 'Expected boolean value');
+    assert(result[0].children[3].value === 'null', 'Expected null value');
+});
+
+test('Parse deeply nested structure', () => {
+    const result = parse_json_objects(['{"a": {"b": {"c": {"d": 1}}}}'], [1]);
+    assert(result.length === 1, 'Expected 1 record');
+    let node = result[0].children[0];
+    assert(node.node_type === 'OBJECT', 'Level 1: Expected OBJECT');
+    node = node.children[0];
+    assert(node.node_type === 'OBJECT', 'Level 2: Expected OBJECT');
+    node = node.children[0];
+    assert(node.node_type === 'OBJECT', 'Level 3: Expected OBJECT');
+    node = node.children[0];
+    assert(node.node_type === 'SCALAR', 'Level 4: Expected SCALAR');
+    assert(node.value === '1', 'Expected value 1');
+});
+
+test('Parse with line numbers', () => {
+    const result = parse_json_objects(['{"key": "value"}'], [42]);
+    assert(result[0].start_position.line === 42, 'Expected line number 42');
+});
+
+test('Parse mixed valid and invalid content', () => {
+    const result = parse_json_objects(['garbage', '{"valid": 1}', 'more garbage'], [1, 2, 3]);
+    assert(result.length === 1, 'Expected 1 valid record');
+    assert(result[0].children[0].value === '1', 'Expected parsed valid object');
+});
+
+test('Error on unclosed object', () => {
+    assertThrows(() => parse_json_objects(['{"key": "value"'], [1]), 'Should throw on unclosed object');
+});
+
+test('Error on unclosed array', () => {
+    assertThrows(() => parse_json_objects(['[1, 2, 3'], [1]), 'Should throw on unclosed array');
+});
+
+test('Error on missing colon', () => {
+    assertThrows(() => parse_json_objects(['{"key" "value"}'], [1]), 'Should throw on missing colon');
+});
+
+test('Error on missing comma in object', () => {
+    assertThrows(() => parse_json_objects(['{"a": 1 "b": 2}'], [1]), 'Should throw on missing comma');
+});
+
+test('Error on missing comma in array', () => {
+    assertThrows(() => parse_json_objects(['[1 2 3]'], [1]), 'Should throw on missing comma in array');
+});
+
+test('Error on trailing comma in object', () => {
+    assertThrows(() => parse_json_objects(['{"key": "value",}'], [1]), 'Should throw on trailing comma');
+});
+
+test('Error on mismatched brackets', () => {
+    assertThrows(() => parse_json_objects(['{"key": [1, 2}'], [1]), 'Should throw on mismatched brackets');
+});
+
+test('Parse empty object in array', () => {
+    const result = parse_json_objects(['[{}]'], [1]);
+    assert(result[0].children[0].node_type === 'OBJECT', 'Expected empty OBJECT in array');
+    assert(result[0].children[0].children.length === 0, 'Expected no children in empty object');
+});
+
+test('Parse empty array in object', () => {
+    const result = parse_json_objects(['{"arr": []}'], [1]);
+    assert(result[0].children[0].node_type === 'ARRAY', 'Expected empty ARRAY');
+    assert(result[0].children[0].children.length === 0, 'Expected no children in empty array');
+});
+
+console.log('\nAll parse_json_objects tests completed!');

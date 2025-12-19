@@ -257,15 +257,14 @@ function handle_array_end(pda_stack, token) {
     return true;
 }
 
-// Now define the automata states
+function handle_value(pda_stack, token) {
+    return handle_scalar_value(pda_stack, token) || handle_open_brace(pda_stack, token) || handle_open_bracket(pda_stack, token);
+}
+
+// Automata states
 expect_key_state = new AutomataState(handle_key_token, 'string key');
 expect_colon_state = new AutomataState(handle_colon_token, 'colon');
-expect_value_state = new AutomataState((pda_stack, token) => {
-    // Value can be scalar, object, or array
-    return handle_scalar_value(pda_stack, token) || 
-           handle_open_brace(pda_stack, token) || 
-           handle_open_bracket(pda_stack, token);
-}, 'value');
+expect_value_state = new AutomataState(handle_value, 'value');
 expect_comma_state = new AutomataState(handle_comma, 'comma');
 expect_object_end_state = new AutomataState(handle_object_end, 'closing brace');
 expect_array_end_state = new AutomataState(handle_array_end, 'closing bracket');
@@ -353,4 +352,4 @@ function parse_json_objects(lines, line_nums) {
     return records;
 }
 
-module.exports = { tokenize_json_line };
+module.exports = { tokenize_json_line, parse_json_objects };
