@@ -376,7 +376,15 @@ function parse_json_objects(lines, line_nums) {
     let token_idx = 0;
     let current_record = null;
     while (token_idx < tokens.length) {
-        [current_record, token_idx] = consume_json_record(tokens, token_idx);
+        try {
+            [current_record, token_idx] = consume_json_record(tokens, token_idx);
+        } catch (e) {
+            if (e instanceof JsonIncompleteError) {
+                break;
+            } else {
+                throw e;
+            }
+        }
         records.push(current_record);
     }
     return records;

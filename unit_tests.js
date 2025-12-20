@@ -337,14 +337,6 @@ test('Parse mixed valid and invalid content', () => {
     assertThrows(() => parse_json_objects(['garbage', '{"valid": 1}', 'more garbage'], [1, 2, 3]), 'Should throw on garbage', JsonTokenizerError);
 });
 
-test('Error on unclosed object', () => {
-    assertThrows(() => parse_json_objects(['{"key": "value"'], [1]), 'Should throw on unclosed object', JsonIncompleteError);
-});
-
-test('Error on unclosed array', () => {
-    assertThrows(() => parse_json_objects(['[1, 2, 3'], [1]), 'Should throw on unclosed array', JsonIncompleteError);
-});
-
 test('Error on missing colon', () => {
     assertThrows(() => parse_json_objects(['{"key" "value"}'], [1]), 'Should throw on missing colon', JsonSyntaxError);
 });
@@ -390,14 +382,25 @@ test('Parse with leading incomplete JSON', () => {
     assert(result[1].children[0].value === '2', 'Expected id 2');
 });
 
-test('Parse with trailing incomplete JSON', () => {
+test('Parse with trailing incomplete object JSON', () => {
     const text = `{"id": 1}
 {"id": 2}
 {"incomplete": `;
     const lines = text.split('\n');
     const line_nums = lines.map((_, i) => i + 1);
-    // Skip last line (incomplete JSON)
-    const result = parse_json_objects(lines.slice(0, -1), line_nums.slice(0, -1));
+    const result = parse_json_objects(lines, line_nums);
+    assert(result.length === 2, 'Expected 2 complete records');
+    assert(result[0].children[0].value === '1', 'Expected id 1');
+    assert(result[1].children[0].value === '2', 'Expected id 2');
+});
+
+test('Parse with trailing incomplete array JSON', () => {
+    const text = `{"id": 1}
+{"id": 2}
+["incomplete", `;
+    const lines = text.split('\n');
+    const line_nums = lines.map((_, i) => i + 1);
+    const result = parse_json_objects(lines, line_nums);
     assert(result.length === 2, 'Expected 2 complete records');
     assert(result[0].children[0].value === '1', 'Expected id 1');
     assert(result[1].children[0].value === '2', 'Expected id 2');
