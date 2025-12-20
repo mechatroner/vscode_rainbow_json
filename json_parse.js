@@ -312,7 +312,7 @@ function consume_json_record(tokens, token_idx) {
     
     let start_token = tokens[token_idx];
     if (!start_token.brace_open && !start_token.bracket_open) {
-        return [null, token_idx];
+        throw new JsonSyntaxError(`Expected '{' or '[', got "${start_token.value}"`, start_token.line_num, start_token.position);
     }
     
     let root_node_type = start_token.brace_open ? OBJECT_NODE_TYPE : ARRAY_NODE_TYPE;
@@ -355,6 +355,7 @@ function consume_json_record(tokens, token_idx) {
 }
 
 function find_first_unindented_line(lines) {
+    // FIXME instead find the first line starting with '{' or '['
     for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
         if (line.length > 0 && line[0] !== ' ' && line[0] !== '\t') {
@@ -373,21 +374,11 @@ function parse_json_objects(lines, line_nums) {
         tokenize_json_line_in_place(lines[i], line_nums[i], tokens);
     }
     let records = [];
-    let previous_record = null;
     let token_idx = 0;
+    let current_record = null;
     while (token_idx < tokens.length) {
-        if (tokens[token_idx].brace_open || tokens[token_idx].bracket_open) {
-            if (previous_record) {
-                records.push(previous_record);
-            }
-            [previous_record, token_idx] = consume_json_record(tokens, token_idx);
-        } else {
-            previous_record = null;
-            token_idx += 1;
-        }
-    }
-    if (previous_record) {
-        records.push(previous_record);
+        [current_record, token_idx] = consume_json_record(tokens, token_idx);
+        records.push(current_record);
     }
     return records;
 }
