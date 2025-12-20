@@ -354,9 +354,22 @@ function consume_json_record(tokens, token_idx) {
     return [root, token_idx];
 }
 
-function parse_json_objects(lines, line_nums) {
-    let tokens = [];
+function find_first_unindented_line(lines) {
     for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        if (line.length > 0 && line[0] !== ' ' && line[0] !== '\t') {
+            return i;
+        }
+    }
+    return lines.length;
+}
+
+function parse_json_objects(lines, line_nums) {
+    // Using first unindented line to start parsing is a hack, but it should probably work fine in practice.
+    // This can be fixed later.
+    let first_unindented_line = find_first_unindented_line(lines);
+    let tokens = [];
+    for (let i = first_unindented_line; i < lines.length; i++) {
         tokenize_json_line_in_place(lines[i], line_nums[i], tokens);
     }
     let records = [];
