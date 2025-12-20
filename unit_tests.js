@@ -334,9 +334,7 @@ test('Parse with line numbers', () => {
 });
 
 test('Parse mixed valid and invalid content', () => {
-    const result = parse_json_objects(['garbage', '{"valid": 1}', 'more garbage'], [1, 2, 3]);
-    assert(result.length === 1, 'Expected 1 valid record');
-    assert(result[0].children[0].value === '1', 'Expected parsed valid object');
+    assertThrows(() => parse_json_objects(['garbage', '{"valid": 1}', 'more garbage'], [1, 2, 3]), 'Should throw on garbage', JsonTokenizerError);
 });
 
 test('Error on unclosed object', () => {
