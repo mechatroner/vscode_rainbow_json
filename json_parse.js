@@ -26,6 +26,45 @@ class JsonIncompleteError extends Error {
     }
 }
 
+class JsonToken {
+    constructor(value, line_num, position) {
+        this.value = value;
+        this.line_num = line_num;
+        this.position = position;
+        
+        // Token type flags
+        this.constant = false;
+        this.string = false;
+        this.number = false;
+        this.punctuation = false;
+    }
+
+    // Punctuation-specific getter methods
+    get brace_open() { return this.value === '{'; }
+    get brace_close() { return this.value === '}'; }
+    get bracket_open() { return this.value === '['; }
+    get bracket_close() { return this.value === ']'; }
+    get colon() { return this.value === ':'; }
+    get comma() { return this.value === ','; }
+
+    isContainerOpen() {
+        return this.brace_open || this.bracket_open;
+    }
+
+    isContainerClose() {
+        return this.brace_close || this.bracket_close;
+    }
+
+    isContainerDelim() {
+        return this.brace_open || this.brace_close || this.bracket_open || this.bracket_close;
+    }
+
+    isMatchingClose(openToken) {
+        return (this.brace_close && openToken.brace_open) || 
+               (this.bracket_close && openToken.bracket_open);
+    }
+}
+
 function tokenize_json_line_in_place(line, line_num, dst_tokens) {
     let cursor = 0;
     const length = line.length;
@@ -59,11 +98,8 @@ function tokenize_json_line_in_place(line, line_num, dst_tokens) {
             const value = match[0];
             // We skip adding Whitespace to the output, but we must advance the cursor
             if (token_type !== 'Whitespace') {
-                let token = {
-                    value: value,
-                    line_num: line_num,
-                    position: cursor,
-                }
+                let token = new JsonToken(value, line_num, cursor);
+                
                 switch (token_type) {
                     case 'Constant':
                         token.constant = true;
@@ -78,20 +114,6 @@ function tokenize_json_line_in_place(line, line_num, dst_tokens) {
                         token.punctuation = true;
                         break;
                 }
-                if (token.punctuation) {
-                    switch (value) {
-                        case '{': token.brace_open = true; break;
-                        case '}': token.brace_close = true; break;
-                        case '[': token.bracket_open = true; break;
-                        case ']': token.bracket_close = true; break;
-                        case ':': token.colon = true; break;
-                        case ',': token.comma = true; break;
-                    }
-                }
-                if (token.brace_open || token.brace_close || token.bracket_open || token.bracket_close) {
-                    token.container_delim = true;
-                }
-
                 dst_tokens.push(token);
             }
             // Advance cursor by the length of the matched string
@@ -314,7 +336,7 @@ function consume_json_record(tokens, token_idx) {
     }
     
     let start_token = tokens[token_idx];
-    if (!start_token.brace_open && !start_token.bracket_open) {
+    if (!start_token.isContainerOpen()) {
         throw new JsonSyntaxError(`Expected '{' or '[', got "${start_token.value}"`, start_token.line_num, start_token.position);
     }
     
@@ -357,21 +379,22 @@ function consume_json_record(tokens, token_idx) {
     return [root, token_idx];
 }
 
-// function find_first_unindented_container_line(lines) {
-//     for (let i = 0; i < lines.length; i++) {
-//         const line = lines[i];
-//         if (line.length > 0 && (line[0] === '{' || line[0] === '[')) {
-//             return i;
-//         }
-//     }
-//     return lines.length;
-// }
 
-function group_tokens_into_objects(tokens) {
-    // In the generic case we can have some trailing lines and some starting lines and no zero-level objects. 
-    // Or maybe we do but it doesn't make sense to look at them this way.
-    // So essentially we need to find all complete objects, without sub-objects together with their relative levels 
-    // which are not guaranteed to be absolute
+
+class ObjectGroupStackFrame {
+    constructor(start_token) {
+        this.start_token = start_token;
+        this.complete_children = [];
+    }
+}
+
+
+function group_tokens_into_full_object_groups(tokens) {
+    // In the generic case we can have some trailing lines and some starting lines with incomplete objects.
+    // But these first and last incomplete objects can have some child objects fully complete - we need to add those.
+    // So essentially we need to find all complete objects, without sub-objects.
+    // We also need to store relative levels of the complete objects, but they are not guaranteed to be absolute.
+    // These levels should be relative to the current stack depth of opening brackets behind, including unbalanced or closing brackets ahead including unbalanced.
     //     {      // a
     //         {}  // - skip, subobject of a complete object a.
     //     }
@@ -381,73 +404,30 @@ function group_tokens_into_objects(tokens) {
     //   {
     //      {  {}  }  // d
     //      {   }  // e
-
-
-
-    // FIXME we need to find the minimal closing level first. 
-    // I.e. we can have a stretch starting with an opening bracket but matching closing out of fragment range/visibility.
-    // So we need to push not when the stack is empty but when it reached the minimal closing level. 
-    // But in that case we would push extra in the middle full objects which is bad? Oh, no, there are no middle closing below level otherwise they would be at the level themselves.
-    let groups = [];
+    let result = [];
     let stack = [];
-    let current_group = [];
-    
-    for (let i = 0; i < tokens.length; i++) {
-        let token = tokens[i];
-        current_group.push(token);
-        
-        if (token.brace_open || token.bracket_open) {
-            stack.push(token);
-        } else if (token.brace_close || token.bracket_close) {
-            if (stack.length === 0) {
-                // Closing without opening - discard and reset
-                groups = [];
-                current_group = [];
-                continue;
-            }
-            
-            let top = stack[stack.length - 1];
-            let is_matching = (token.brace_close && top.brace_open) || 
-                              (token.bracket_close && top.bracket_open);
-            
-            if (is_matching) {
-                stack.pop();
-                if (stack.length === 0 && current_group_start !== null) {
-                    // Completed a top-level container
-                    groups.push(current_group);
-                    current_group = [];
-                }
-            } else {
-                throw new JsonSyntaxError(`Mismatched brackets at token "${token.value}"`, token.line_num, token.position);
-            }
-        }
+    for (let token of tokens) {
+        if (!token.isContainerDelim())
+            continue;
+
     }
-    
-    return groups;
+    return result;
 }
 
 
 function parse_json_objects(lines, line_nums) {
     // Using first unindented container line to start parsing is a hack, but it should probably work OK in practice.
     // This can be fixed later.
-    let first_unindented_line = find_first_unindented_container_line(lines);
     let tokens = [];
-    for (let i = first_unindented_line; i < lines.length; i++) {
+    for (let i = 0; i < lines.length; i++) {
         tokenize_json_line_in_place(lines[i], line_nums[i], tokens);
     }
+    let token_object_groups = group_tokens_into_full_object_groups(tokens);
     let records = [];
-    let token_idx = 0;
-    let current_record = null;
-    while (token_idx < tokens.length) {
-        try {
-            [current_record, token_idx] = consume_json_record(tokens, token_idx);
-        } catch (e) {
-            if (e instanceof JsonIncompleteError) {
-                break;
-            } else {
-                throw e;
-            }
-        }
+    for (let token_object_group of token_object_groups) {
+        let [current_record, token_idx] = consume_json_record(token_object_group.tokens, 0);
+        // TODO make sure token_idx equals to group length.
+        current_record.relative_depth = token_object_group.relative_depth;
         records.push(current_record);
     }
     return records;
