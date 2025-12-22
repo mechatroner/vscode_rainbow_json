@@ -88,6 +88,9 @@ function tokenize_json_line_in_place(line, line_num, dst_tokens) {
                         case ',': token.comma = true; break;
                     }
                 }
+                if (token.brace_open || token.brace_close || token.bracket_open || token.bracket_close) {
+                    token.container_delim = true;
+                }
 
                 dst_tokens.push(token);
             }
@@ -354,15 +357,75 @@ function consume_json_record(tokens, token_idx) {
     return [root, token_idx];
 }
 
-function find_first_unindented_container_line(lines) {
-    for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
-        if (line.length > 0 && (line[0] === '{' || line[0] === '[')) {
-            return i;
+// function find_first_unindented_container_line(lines) {
+//     for (let i = 0; i < lines.length; i++) {
+//         const line = lines[i];
+//         if (line.length > 0 && (line[0] === '{' || line[0] === '[')) {
+//             return i;
+//         }
+//     }
+//     return lines.length;
+// }
+
+function group_tokens_into_objects(tokens) {
+    // In the generic case we can have some trailing lines and some starting lines and no zero-level objects. 
+    // Or maybe we do but it doesn't make sense to look at them this way.
+    // So essentially we need to find all complete objects, without sub-objects together with their relative levels 
+    // which are not guaranteed to be absolute
+    //     {      // a
+    //         {}  // - skip, subobject of a complete object a.
+    //     }
+    //     {   }   // b
+    //   }
+    //   [   ]     // c
+    //   {
+    //      {  {}  }  // d
+    //      {   }  // e
+
+
+
+    // FIXME we need to find the minimal closing level first. 
+    // I.e. we can have a stretch starting with an opening bracket but matching closing out of fragment range/visibility.
+    // So we need to push not when the stack is empty but when it reached the minimal closing level. 
+    // But in that case we would push extra in the middle full objects which is bad? Oh, no, there are no middle closing below level otherwise they would be at the level themselves.
+    let groups = [];
+    let stack = [];
+    let current_group = [];
+    
+    for (let i = 0; i < tokens.length; i++) {
+        let token = tokens[i];
+        current_group.push(token);
+        
+        if (token.brace_open || token.bracket_open) {
+            stack.push(token);
+        } else if (token.brace_close || token.bracket_close) {
+            if (stack.length === 0) {
+                // Closing without opening - discard and reset
+                groups = [];
+                current_group = [];
+                continue;
+            }
+            
+            let top = stack[stack.length - 1];
+            let is_matching = (token.brace_close && top.brace_open) || 
+                              (token.bracket_close && top.bracket_open);
+            
+            if (is_matching) {
+                stack.pop();
+                if (stack.length === 0 && current_group_start !== null) {
+                    // Completed a top-level container
+                    groups.push(current_group);
+                    current_group = [];
+                }
+            } else {
+                throw new JsonSyntaxError(`Mismatched brackets at token "${token.value}"`, token.line_num, token.position);
+            }
         }
     }
-    return lines.length;
+    
+    return groups;
 }
+
 
 function parse_json_objects(lines, line_nums) {
     // Using first unindented container line to start parsing is a hack, but it should probably work OK in practice.
