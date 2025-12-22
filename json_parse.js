@@ -381,13 +381,20 @@ function consume_json_record(tokens, token_idx) {
 
 
 
-class ObjectGroupStackFrame {
-    constructor(start_token) {
-        this.start_token = start_token;
-        this.complete_children = [];
+class CompleteObjectTokenGroup {
+    constructor(first_token_idx, last_token_idx, relative_depth) {
+        this.first_token_idx = first_token_idx;
+        this.last_token_idx = last_token_idx;
+        this.relative_depth = relative_depth;
     }
 }
 
+class ObjectGroupStackFrame {
+    constructor(first_token_idx) {
+        this.first_token_idx = first_token_idx;
+        this.complete_children_groups = [];
+    }
+}
 
 function group_tokens_into_full_object_groups(tokens) {
     // In the generic case we can have some trailing lines and some starting lines with incomplete objects.
@@ -397,20 +404,46 @@ function group_tokens_into_full_object_groups(tokens) {
     // These levels should be relative to the current stack depth of opening brackets behind, including unbalanced or closing brackets ahead including unbalanced.
     //     {      // a
     //         {}  // - skip, subobject of a complete object a.
-    //     }
+    //     },
     //     {   }   // b
-    //   }
-    //   [   ]     // c
+    //   },
+    //   [   ],     // c
     //   {
-    //      {  {}  }  // d
-    //      {   }  // e
+    //      {
+    //         {}  d
     let result = [];
     let stack = [];
-    for (let token of tokens) {
+    for (let token_idx = 0; token_idx < tokens.length; token_idx++) {
+        let token = tokens[token_idx];
         if (!token.isContainerDelim())
             continue;
-
+        if (token.isContainerOpen()) {
+            stack.push(new ObjectGroupStackFrame(token_idx));
+            continue;
+        }
+        // Token is container close.
+        if (stack.length === 0) {
+            // Update depths of existing groups.
+            // TODO this is an enefficient way to do this, potentially quadratic complexity, find a better to update depths and apply it once at the end.
+            for (let group of result) {
+                group.relative_depth += 1;
+            }
+            continue;
+        }
+        let top = stack[stack.length - 1];
+        if (!token.isMatchingClose(top.start_token)) {
+            throw new JsonSyntaxError(`Mismatched closing token "${token.value}"`, token.line_num, token.position);
+        }
+        let last_complete_object = new CompleteObjectTokenGroup(top.first_token_idx, token_idx, stack.length - 1);
+        stack.pop();
+        if (stack.length > 0) {
+            stack[stack.length - 1].complete_children_groups.push(last_complete_object);
+        } else {
+            result.push(last_complete_object);
+        }
     }
+    // Add remaining complete objects from the stack to result
+    
     return result;
 }
 
@@ -425,8 +458,8 @@ function parse_json_objects(lines, line_nums) {
     let token_object_groups = group_tokens_into_full_object_groups(tokens);
     let records = [];
     for (let token_object_group of token_object_groups) {
-        let [current_record, token_idx] = consume_json_record(token_object_group.tokens, 0);
-        // TODO make sure token_idx equals to group length.
+        let [current_record, token_idx] = consume_json_record(token_object_group.tokens, token_object_group.first_token_idx);
+        // TODO make sure token_idx equals to last_token_idx + 1
         current_record.relative_depth = token_object_group.relative_depth;
         records.push(current_record);
     }
