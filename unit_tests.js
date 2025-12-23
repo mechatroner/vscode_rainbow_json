@@ -32,7 +32,7 @@ function test(name, fn) {
     allTests.push({ id: testId, name, fn });
 }
 
-function runTests(testIds = null) {
+function runTests(testIds = null, rethrowOnFailure = false) {
     let testsToRun = allTests;
 
     if (testIds && testIds.length > 0) {
@@ -57,6 +57,9 @@ function runTests(testIds = null) {
             console.error(`FAIL [${id}]: ${name}`);
             console.error(`  ${e.message}`);
             failCount++;
+            if (rethrowOnFailure) {
+                throw e;
+            }
         }
     }
 
@@ -489,24 +492,42 @@ if (args.length > 0) {
     } else if (args[0] === '--help' || args[0] === '-h') {
         console.log('Usage: node unit_tests.js [options] [test_ids...]');
         console.log('\nOptions:');
-        console.log('  --list, -l    List all available tests with their IDs');
-        console.log('  --help, -h    Show this help message');
+        console.log('  --list, -l       List all available tests with their IDs');
+        console.log('  --help, -h       Show this help message');
+        console.log('  --fail-fast, -f  Stop on first failure and rethrow the error');
         console.log('\nExamples:');
-        console.log('  node unit_tests.js           # Run all tests');
-        console.log('  node unit_tests.js 1 5 10    # Run tests with IDs 1, 5, and 10');
-        console.log('  node unit_tests.js --list    # List all tests');
+        console.log('  node unit_tests.js              # Run all tests');
+        console.log('  node unit_tests.js 1 5 10       # Run tests with IDs 1, 5, and 10');
+        console.log('  node unit_tests.js --list       # List all tests');
+        console.log('  node unit_tests.js -f           # Run all tests, stop on first failure');
+        console.log('  node unit_tests.js -f 1 5 10    # Run specific tests, stop on first failure');
     } else {
-        // Parse test IDs
-        const testIds = args.map(arg => {
-            const id = parseInt(arg, 10);
-            if (isNaN(id)) {
-                console.error(`Invalid test ID: ${arg}`);
-                process.exit(1);
-            }
-            return id;
-        });
-        console.log(`Running ${testIds.length} selected test(s)...\n`);
-        runTests(testIds);
+        let rethrowOnFailure = false;
+        let testIdArgs = args;
+        
+        // Check for fail-fast flag
+        if (args[0] === '--fail-fast' || args[0] === '-f') {
+            rethrowOnFailure = true;
+            testIdArgs = args.slice(1);
+        }
+
+        let testIds = null;
+        
+        if (testIdArgs.length === 0) {
+            console.log(`Running all tests${rethrowOnFailure ? ' (fail-fast mode)' : ''}...\n`);
+        } else {
+            // Parse test IDs
+            testIds = testIdArgs.map(arg => {
+                const id = parseInt(arg, 10);
+                if (isNaN(id)) {
+                    console.error(`Invalid test ID: ${arg}`);
+                    process.exit(1);
+                }
+                return id;
+            });
+            console.log(`Running ${testIds.length} selected test(s)${rethrowOnFailure ? ' (fail-fast mode)' : ''}...\n`);
+        }
+        runTests(testIds, rethrowOnFailure);
     }
 } else {
     console.log('Running all tests...\n');
