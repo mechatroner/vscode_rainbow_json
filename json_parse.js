@@ -1,5 +1,11 @@
 // Json tokens can't span multiple lines so we can tokenize them on line-by-line basis which is nice.
 
+function assert(condition, message) {
+    if (!condition) {
+        throw new Error(`Assertion failed: ${message}`);
+    }
+}
+
 // Custom error types
 class JsonTokenizerError extends Error {
     constructor(message, line_num, position) {
@@ -442,8 +448,12 @@ function group_tokens_into_full_object_groups(tokens) {
             result.push(last_complete_object);
         }
     }
-    // Add remaining complete objects from the stack to result
-    
+    for (let ogsf of stack) {
+        for (let last_complete_object of ogsf.complete_children_groups) {
+            result.push(last_complete_object);
+        }
+    }
+
     return result;
 }
 
@@ -451,6 +461,7 @@ function group_tokens_into_full_object_groups(tokens) {
 function parse_json_objects(lines, line_nums) {
     // Using first unindented container line to start parsing is a hack, but it should probably work OK in practice.
     // This can be fixed later.
+    // TODO we can probably do all 3 steps in a single pass. Or at least do them in 2 steps.
     let tokens = [];
     for (let i = 0; i < lines.length; i++) {
         tokenize_json_line_in_place(lines[i], line_nums[i], tokens);
@@ -458,8 +469,8 @@ function parse_json_objects(lines, line_nums) {
     let token_object_groups = group_tokens_into_full_object_groups(tokens);
     let records = [];
     for (let token_object_group of token_object_groups) {
-        let [current_record, token_idx] = consume_json_record(token_object_group.tokens, token_object_group.first_token_idx);
-        // TODO make sure token_idx equals to last_token_idx + 1
+        let [current_record, token_idx] = consume_json_record(tokens, token_object_group.first_token_idx);
+        assert(token_idx === token_object_group.last_token_idx + 1, "Token index does not match expected last token index");
         current_record.relative_depth = token_object_group.relative_depth;
         records.push(current_record);
     }
