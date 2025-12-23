@@ -437,7 +437,7 @@ function group_tokens_into_full_object_groups(tokens) {
             continue;
         }
         let top = stack[stack.length - 1];
-        if (!token.isMatchingClose(top.start_token)) {
+        if (!token.isMatchingClose(tokens[top.first_token_idx])) {
             throw new JsonSyntaxError(`Mismatched closing token "${token.value}"`, token.line_num, token.position);
         }
         let last_complete_object = new CompleteObjectTokenGroup(top.first_token_idx, token_idx, stack.length - 1);
