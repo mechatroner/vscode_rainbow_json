@@ -378,8 +378,7 @@ test('Parse with leading incomplete JSON', () => {
 {"id": 2}`;
     const lines = text.split('\n');
     const line_nums = lines.map((_, i) => i + 1);
-    // Skip first line (incomplete JSON)
-    const result = parse_json_objects(lines.slice(1), line_nums.slice(1));
+    const result = parse_json_objects(lines, line_nums);
     assert(result.length === 2, 'Expected 2 complete records');
     assert(result[0].children[0].value === '1', 'Expected id 1');
     assert(result[1].children[0].value === '2', 'Expected id 2');
@@ -417,8 +416,7 @@ test('Parse with both leading and trailing incomplete JSON', () => {
 {"trailing": "incomplete"`;
     const lines = text.split('\n');
     const line_nums = lines.map((_, i) => i + 1);
-    // Skip first and last line
-    const result = parse_json_objects(lines.slice(1, -1), line_nums.slice(1, -1));
+    const result = parse_json_objects(lines, line_nums);
     assert(result.length === 3, 'Expected 3 complete records');
     assert(result[0].children[0].value === '1', 'Expected id 1');
     assert(result[1].children[0].value === '2', 'Expected id 2');
@@ -432,8 +430,7 @@ test('Parse with indented incomplete leading JSON', () => {
 {"valid": true}`;
     const lines = text.split('\n');
     const line_nums = lines.map((_, i) => i + 1);
-    // Skip first 3 lines (indented incomplete JSON)
-    const result = parse_json_objects(lines.slice(3), line_nums.slice(3));
+    const result = parse_json_objects(lines, line_nums);
     assert(result.length === 1, 'Expected 1 complete record');
     assert(result[0].children[0].value === 'true', 'Expected valid: true');
 });
@@ -450,13 +447,47 @@ test('Parse multiline object with leading incomplete', () => {
 }`;
     const lines = text.split('\n');
     const line_nums = lines.map((_, i) => i + 1);
-    // Skip first line
     const result = parse_json_objects(lines, line_nums);
     assert(result.length === 2, 'Expected 2 complete records');
     assert(result[0].children.length === 2, 'Expected 2 fields in first object');
     assert(result[0].children[0].value === '"John"', 'Expected name John');
     assert(result[1].children[0].value === '"Jane"', 'Expected name Jane');
 });
+
+test('Leading Trailing Incomplete', () => {
+    const text = `"key": {"id": "before1"}},
+    {"id": "before2"},
+    {"id": "before3"}
+]
+{
+    "id": "inside1"
+}
+{
+    "id": "inside2"
+}
+[  {"id": "after1"}
+   "key": {
+        "key": {"id": "after2"},
+        "key": {"id": "after3"},
+        "key": [ {"id": "after4"}
+
+`;
+    const lines = text.split('\n');
+    const line_nums = lines.map((_, i) => i + 1);
+    const result = parse_json_objects(lines, line_nums);
+    assert(result.length === 9, 'Expected 9 complete records');
+    assert(result[0].children[0].value === '"before1"', 'Expected id "before1"');
+    assert(result[1].children[0].value === '"before2"', 'Expected id "before2"');
+    assert(result[2].children[0].value === '"before3"', 'Expected id "before3"');
+    assert(result[3].children[0].value === '"inside1"', 'Expected id "inside1"');
+    assert(result[4].children[0].value === '"inside2"', 'Expected id "inside2"');
+    assert(result[5].children[0].value === '"after1"', 'Expected id "after1"');
+    assert(result[6].children[0].value === '"after2"', 'Expected id "after2"');
+    assert(result[7].children[0].value === '"after3"', 'Expected id "after3"');
+    assert(result[8].children[0].value === '"after4"', 'Expected id "after4"');
+});
+
+
 
 test('Parse with invalid syntax in middle', () => {
     // Full object grouping pre-processing should allow to skip the incomplete array in the middle.
