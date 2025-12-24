@@ -45,23 +45,10 @@ function push_node_tokens(builder, node, depth) {
         let end_col = node.end_position.column;
         let length = end_col - start_col;
         if (length > 0) {
-            builder.push(start_line, start_col, length, all_token_types.indexOf(token_type), 0);
+			let current_range = new vscode.Range(start_line, start_col, start_line, end_col);
+            builder.push(current_range, token_type);
         }
     } else {
-        // For container nodes (OBJECT or ARRAY), highlight the opening and closing brackets
-        // Opening bracket
-        let open_line = node.start_position.line;
-        let open_col = node.start_position.column;
-        builder.push(open_line, open_col, 1, all_token_types.indexOf(token_type), 0);
-        
-        // Closing bracket
-        if (node.end_position) {
-            let close_line = node.end_position.line;
-            let close_col = node.end_position.column;
-            builder.push(close_line, close_col, 1, all_token_types.indexOf(token_type), 0);
-        }
-        
-        // Recursively process children at depth + 1
         for (let child of node.children) {
             push_node_tokens(builder, child, depth + 1);
         }
@@ -94,7 +81,7 @@ class RainbowTokenProvider {
         
 		// Use depth-based coloring just for test.
         for (let record of records) {
-            // Use relative_depth from the record as the base depth
+            // Use relative_depth from the record as the base depth. Children nodes don't have relative_dept set.
             let base_depth = record.relative_depth || 0;
             push_node_tokens(builder, record, base_depth);
         }

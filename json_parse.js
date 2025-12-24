@@ -170,6 +170,7 @@ class RainbowJsonNode {
         this.end_position = null;
         this.children = []; // For container nodes.
         this.value = null; // For scalar nodes.
+        this.relative_depth = null; // Only set for root nodes.
     }
 }
 
