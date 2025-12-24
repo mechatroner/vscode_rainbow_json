@@ -465,11 +465,11 @@ test('Leading Trailing Incomplete', () => {
 {
     "id": "inside2"
 }
-[  {"id": "after1"}
-   "key": {
+[  {"id": "after1"},
+   {
         "key": {"id": "after2"},
         "key": {"id": "after3"},
-        "key": [ {"id": "after4"}
+        "key": [ {"id": "after4"},
 
 `;
     const lines = text.split('\n');
@@ -477,14 +477,18 @@ test('Leading Trailing Incomplete', () => {
     const result = parse_json_objects(lines, line_nums);
     assert(result.length === 9, 'Expected 9 complete records');
     assert(result[0].children[0].value === '"before1"', 'Expected id "before1"');
+    assert(result[0].relative_depth === 2, 'Expected relative depth 2');
     assert(result[1].children[0].value === '"before2"', 'Expected id "before2"');
+    assert(result[1].relative_depth === 1, 'Expected relative depth 1');
     assert(result[2].children[0].value === '"before3"', 'Expected id "before3"');
     assert(result[3].children[0].value === '"inside1"', 'Expected id "inside1"');
+    assert(result[3].relative_depth === 0, 'Expected relative depth 0');
     assert(result[4].children[0].value === '"inside2"', 'Expected id "inside2"');
     assert(result[5].children[0].value === '"after1"', 'Expected id "after1"');
     assert(result[6].children[0].value === '"after2"', 'Expected id "after2"');
     assert(result[7].children[0].value === '"after3"', 'Expected id "after3"');
     assert(result[8].children[0].value === '"after4"', 'Expected id "after4"');
+    assert(result[8].relative_depth === 3, 'Expected relative depth 3');
 });
 
 

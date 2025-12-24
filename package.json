@@ -7,7 +7,10 @@
 	"engines": {
 		"vscode": "^1.100.0"
 	},
-	"activationEvents": [],
+	"activationEvents": [
+		"onLanguage:json",
+		"onLanguage:jsonl"
+	],
 	"main": "./extension.js",
 	"contributes": {
 		"commands": [
@@ -15,7 +18,41 @@
 				"command": "extension.helloWorld",
 				"title": "Hello World"
 			}
-		]
+		],        
+		"semanticTokenScopes": [
+          {
+            "language": "json",
+            "scopes": {
+              "rainbow1": ["rainbow1"],
+              "rainbow2": ["keyword.rainbow2"],
+              "rainbow3": ["entity.name.function.rainbow3"],
+              "rainbow4": ["comment.rainbow4"],
+              "rainbow5": ["string.rainbow5"],
+              "rainbow6": ["variable.parameter.rainbow6"],
+              "rainbow7": ["constant.numeric.rainbow7"],
+              "rainbow8": ["entity.name.type.rainbow8"],
+              "rainbow9": ["markup.bold.rainbow9"],
+              "rainbow10": ["invalid.rainbow10"],
+              "comment": ["comment"]
+            }
+          },
+          {
+            "language": "jsonl",
+            "scopes": {
+              "rainbow1": ["rainbow1"],
+              "rainbow2": ["keyword.rainbow2"],
+              "rainbow3": ["entity.name.function.rainbow3"],
+              "rainbow4": ["comment.rainbow4"],
+              "rainbow5": ["string.rainbow5"],
+              "rainbow6": ["variable.parameter.rainbow6"],
+              "rainbow7": ["constant.numeric.rainbow7"],
+              "rainbow8": ["entity.name.type.rainbow8"],
+              "rainbow9": ["markup.bold.rainbow9"],
+              "rainbow10": ["invalid.rainbow10"],
+              "comment": ["comment"]
+            }
+          }
+        ]
 	},
 	"scripts": {},
 	"devDependencies": {
