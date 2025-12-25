@@ -3,31 +3,44 @@ const { tokenize_json_line, parse_json_objects, JsonTokenizerError, JsonSyntaxEr
 
 /**
  * @param {boolean} condition
- * @param {string} message
+ * @param {string} [message]
  * @throws {Error}
  */
 function assert(condition, message) {
     if (!condition) {
-        throw new Error(`Assertion failed: ${message}`);
+        throw new Error(message ? `Assertion failed: ${message}` : 'Assertion failed');
+    }
+}
+
+/**
+ * @param {any} actual
+ * @param {any} expected
+ * @param {string} [message]
+ * @throws {Error}
+ */
+function assertEquals(actual, expected, message) {
+    if (actual !== expected) {
+        const baseMsg = `Expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`;
+        throw new Error(message ? `${message}: ${baseMsg}` : baseMsg);
     }
 }
 
 /**
  * @param {function(): void} fn
- * @param {string} message
+ * @param {string} [message]
  * @param {function|null} [expectedErrorType=null]
  * @throws {Error}
  */
 function assertThrows(fn, message, expectedErrorType = null) {
     try {
         fn();
-        throw new Error(`Expected function to throw: ${message}`);
+        throw new Error(message ? `Expected function to throw: ${message}` : 'Expected function to throw');
     } catch (e) {
         if (e.message.startsWith('Expected function to throw')) {
             throw e;
         }
         if (expectedErrorType && !(e instanceof expectedErrorType)) {
-            throw new Error(`Expected ${expectedErrorType.name}, got ${e.constructor.name}: ${message}`);
+            throw new Error(`Expected ${expectedErrorType.name}, got ${e.constructor.name}${message ? `: ${message}` : ''}`);
         }
         // Expected error, test passes
     }
@@ -103,140 +116,140 @@ console.log('Registering tests...\n');
 // Tokenize tests
 test('Empty string returns empty array', () => {
     const result = tokenize_json_line('');
-    assert(result.length === 0, 'Expected empty array');
+    assertEquals(result.length, 0);
 });
 
 test('Whitespace only returns empty array', () => {
     const result = tokenize_json_line('   \t  ');
-    assert(result.length === 0, 'Expected empty array');
+    assertEquals(result.length, 0);
 });
 
 test('String token', () => {
     const result = tokenize_json_line('"hello world"');
-    assert(result.length === 1, 'Expected 1 token');
-    assert(result[0].string, 'Expected string attribute to be true');
-    assert(result[0].value === '"hello world"', 'Expected correct value');
+    assertEquals(result.length, 1);
+    assert(result[0].string);
+    assertEquals(result[0].value, '"hello world"');
 });
 
 test('String with escaped characters', () => {
     const result = tokenize_json_line('"hello \\"world\\""');
-    assert(result.length === 1, 'Expected 1 token');
-    assert(result[0].value === '"hello \\"world\\""', 'Expected escaped quotes');
+    assertEquals(result.length, 1);
+    assertEquals(result[0].value, '"hello \\"world\\""');
 });
 
 test('Integer number', () => {
     const result = tokenize_json_line('42');
-    assert(result.length === 1, 'Expected 1 token');
-    assert(result[0].number, 'Expected number attribute to be true');
-    assert(result[0].value === '42', 'Expected correct value');
+    assertEquals(result.length, 1);
+    assert(result[0].number);
+    assertEquals(result[0].value, '42');
 });
 
 test('Negative number', () => {
     const result = tokenize_json_line('-42');
-    assert(result[0].value === '-42', 'Expected negative number');
+    assertEquals(result[0].value, '-42');
 });
 
 test('Decimal number', () => {
     const result = tokenize_json_line('3.14159');
-    assert(result[0].value === '3.14159', 'Expected decimal number');
+    assertEquals(result[0].value, '3.14159');
 });
 
 test('Number with exponent', () => {
     const result = tokenize_json_line('1.23e-10');
-    assert(result[0].value === '1.23e-10', 'Expected scientific notation');
+    assertEquals(result[0].value, '1.23e-10');
 });
 
 test('Zero', () => {
     const result = tokenize_json_line('0');
-    assert(result[0].value === '0', 'Expected zero');
+    assertEquals(result[0].value, '0');
 });
 
 test('Boolean true', () => {
     const result = tokenize_json_line('true');
-    assert(result[0].constant, 'Expected constant attribute to be true');
-    assert(result[0].value === 'true', 'Expected true');
+    assert(result[0].constant);
+    assertEquals(result[0].value, 'true');
 });
 
 test('Boolean false', () => {
     const result = tokenize_json_line('false');
-    assert(result[0].value === 'false', 'Expected false');
+    assertEquals(result[0].value, 'false');
 });
 
 test('Null constant', () => {
     const result = tokenize_json_line('null');
-    assert(result[0].value === 'null', 'Expected null');
+    assertEquals(result[0].value, 'null');
 });
 
 test('BraceOpen token', () => {
     const result = tokenize_json_line('{');
-    assert(result[0].brace_open, 'Expected brace_open attribute to be true');
+    assert(result[0].brace_open);
 });
 
 test('BraceClose token', () => {
     const result = tokenize_json_line('}');
-    assert(result[0].brace_close, 'Expected brace_close attribute to be true');
+    assert(result[0].brace_close);
 });
 
 test('BracketOpen token', () => {
     const result = tokenize_json_line('[');
-    assert(result[0].bracket_open, 'Expected bracket_open attribute to be true');
+    assert(result[0].bracket_open);
 });
 
 test('BracketClose token', () => {
     const result = tokenize_json_line(']');
-    assert(result[0].bracket_close, 'Expected bracket_close attribute to be true');
+    assert(result[0].bracket_close);
 });
 
 test('Colon token', () => {
     const result = tokenize_json_line(':');
-    assert(result[0].colon, 'Expected colon attribute to be true');
+    assert(result[0].colon);
 });
 
 test('Comma token', () => {
     const result = tokenize_json_line(',');
-    assert(result[0].comma, 'Expected comma attribute to be true');
+    assert(result[0].comma);
 });
 
 test('Simple object structure', () => {
     const result = tokenize_json_line('{"key": "value"}');
-    assert(result.length === 5, 'Expected 5 tokens');
-    assert(result[0].brace_open, 'Expected brace_open');
-    assert(result[1].string, 'Expected string');
-    assert(result[2].colon, 'Expected colon');
-    assert(result[3].string, 'Expected string');
-    assert(result[4].brace_close, 'Expected brace_close');
+    assertEquals(result.length, 5);
+    assert(result[0].brace_open);
+    assert(result[1].string);
+    assert(result[2].colon);
+    assert(result[3].string);
+    assert(result[4].brace_close);
 });
 
 test('Simple array structure', () => {
     const result = tokenize_json_line('[1, 2, 3]');
-    assert(result.length === 7, 'Expected 7 tokens');
-    assert(result[0].bracket_open, 'Expected bracket_open');
-    assert(result[1].number, 'Expected number');
-    assert(result[2].comma, 'Expected comma');
+    assertEquals(result.length, 7);
+    assert(result[0].bracket_open);
+    assert(result[1].number);
+    assert(result[2].comma);
 });
 
 test('Mixed types', () => {
     const result = tokenize_json_line('[true, false, null, 42, "text"]');
-    assert(result.length === 11, 'Expected 11 tokens');
-    assert(result[1].value === 'true', 'Expected true');
-    assert(result[3].value === 'false', 'Expected false');
-    assert(result[5].value === 'null', 'Expected null');
-    assert(result[7].value === '42', 'Expected 42');
-    assert(result[9].value === '"text"', 'Expected text');
+    assertEquals(result.length, 11);
+    assertEquals(result[1].value, 'true');
+    assertEquals(result[3].value, 'false');
+    assertEquals(result[5].value, 'null');
+    assertEquals(result[7].value, '42');
+    assertEquals(result[9].value, '"text"');
 });
 
 test('Whitespace handling', () => {
     const result = tokenize_json_line('  {  "key"  :  "value"  }  ');
-    assert(result.length === 5, 'Expected 5 tokens (whitespace skipped)');
+    assertEquals(result.length, 5);
 });
 
 test('Token positions', () => {
     const result = tokenize_json_line('{"a": 1}');
-    assert(result[0].position === 0, 'BraceOpen at position 0');
-    assert(result[1].position === 1, 'String at position 1');
-    assert(result[2].position === 4, 'Colon at position 4');
-    assert(result[3].position === 6, 'Number at position 6');
-    assert(result[4].position === 7, 'BraceClose at position 7');
+    assertEquals(result[0].position, 0);
+    assertEquals(result[1].position, 1);
+    assertEquals(result[2].position, 4);
+    assertEquals(result[3].position, 6);
+    assertEquals(result[4].position, 7);
 });
 
 test('Invalid character throws error', () => {
@@ -254,112 +267,112 @@ test('Unclosed string throws error', () => {
 // Parse JSON objects tests
 test('Parse empty object', () => {
     const result = parse_json_objects(['{}'], [1]);
-    assert(result.length === 1, 'Expected 1 record');
-    assert(result[0].node_type === 'OBJECT', 'Expected OBJECT type');
-    assert(result[0].children.length === 0, 'Expected no children');
+    assertEquals(result.length, 1);
+    assertEquals(result[0].node_type, 'OBJECT');
+    assertEquals(result[0].children.length, 0);
 });
 
 test('Parse empty array', () => {
     const result = parse_json_objects(['[]'], [1]);
-    assert(result.length === 1, 'Expected 1 record');
-    assert(result[0].node_type === 'ARRAY', 'Expected ARRAY type');
-    assert(result[0].children.length === 0, 'Expected no children');
+    assertEquals(result.length, 1);
+    assertEquals(result[0].node_type, 'ARRAY');
+    assertEquals(result[0].children.length, 0);
 });
 
 test('Parse simple object with one key-value', () => {
     const result = parse_json_objects(['{"name": "John"}'], [1]);
-    assert(result.length === 1, 'Expected 1 record');
-    assert(result[0].children.length === 1, 'Expected 1 child');
-    assert(result[0].children[0].parent_key === '"name"', 'Expected correct key');
-    assert(result[0].children[0].value === '"John"', 'Expected correct value');
+    assertEquals(result.length, 1);
+    assertEquals(result[0].children.length, 1);
+    assertEquals(result[0].children[0].parent_key, '"name"');
+    assertEquals(result[0].children[0].value, '"John"');
 });
 
 test('Parse object with multiple keys', () => {
     const result = parse_json_objects(['{"name": "John", "age": 30, "active": true}'], [1]);
-    assert(result.length === 1, 'Expected 1 record');
-    assert(result[0].children.length === 3, 'Expected 3 children');
-    assert(result[0].children[0].parent_key === '"name"', 'Expected name key');
-    assert(result[0].children[1].parent_key === '"age"', 'Expected age key');
-    assert(result[0].children[2].parent_key === '"active"', 'Expected active key');
+    assertEquals(result.length, 1);
+    assertEquals(result[0].children.length, 3);
+    assertEquals(result[0].children[0].parent_key, '"name"');
+    assertEquals(result[0].children[1].parent_key, '"age"');
+    assertEquals(result[0].children[2].parent_key, '"active"');
 });
 
 test('Parse simple array with scalars', () => {
     const result = parse_json_objects(['[1, 2, 3]'], [1]);
-    assert(result.length === 1, 'Expected 1 record');
-    assert(result[0].children.length === 3, 'Expected 3 children');
-    assert(result[0].children[0].parent_array_index === 0, 'Expected index 0');
-    assert(result[0].children[1].parent_array_index === 1, 'Expected index 1');
-    assert(result[0].children[2].parent_array_index === 2, 'Expected index 2');
-    assert(result[0].children[0].value === '1', 'Expected value 1');
+    assertEquals(result.length, 1);
+    assertEquals(result[0].children.length, 3);
+    assertEquals(result[0].children[0].parent_array_index, 0);
+    assertEquals(result[0].children[1].parent_array_index, 1);
+    assertEquals(result[0].children[2].parent_array_index, 2);
+    assertEquals(result[0].children[0].value, '1');
 });
 
 test('Parse nested object', () => {
     const result = parse_json_objects(['{"person": {"name": "John", "age": 30}}'], [1]);
-    assert(result.length === 1, 'Expected 1 record');
-    assert(result[0].children.length === 1, 'Expected 1 child');
-    assert(result[0].children[0].node_type === 'OBJECT', 'Expected nested OBJECT');
-    assert(result[0].children[0].children.length === 2, 'Expected 2 grandchildren');
+    assertEquals(result.length, 1);
+    assertEquals(result[0].children.length, 1);
+    assertEquals(result[0].children[0].node_type, 'OBJECT');
+    assertEquals(result[0].children[0].children.length, 2);
 });
 
 test('Parse nested array', () => {
     const result = parse_json_objects(['[[1, 2], [3, 4]]'], [1]);
-    assert(result.length === 1, 'Expected 1 record');
-    assert(result[0].children.length === 2, 'Expected 2 children');
-    assert(result[0].children[0].node_type === 'ARRAY', 'Expected nested ARRAY');
-    assert(result[0].children[0].children.length === 2, 'Expected 2 elements in first array');
+    assertEquals(result.length, 1);
+    assertEquals(result[0].children.length, 2);
+    assertEquals(result[0].children[0].node_type, 'ARRAY');
+    assertEquals(result[0].children[0].children.length, 2);
 });
 
 test('Parse array of objects', () => {
     const result = parse_json_objects(['[{"id": 1}, {"id": 2}]'], [1]);
-    assert(result.length === 1, 'Expected 1 record');
-    assert(result[0].children.length === 2, 'Expected 2 children');
-    assert(result[0].children[0].node_type === 'OBJECT', 'Expected OBJECT at index 0');
-    assert(result[0].children[1].node_type === 'OBJECT', 'Expected OBJECT at index 1');
+    assertEquals(result.length, 1);
+    assertEquals(result[0].children.length, 2);
+    assertEquals(result[0].children[0].node_type, 'OBJECT');
+    assertEquals(result[0].children[1].node_type, 'OBJECT');
 });
 
 test('Parse object with array value', () => {
     const result = parse_json_objects(['{"tags": ["red", "blue"]}'], [1]);
-    assert(result.length === 1, 'Expected 1 record');
-    assert(result[0].children[0].node_type === 'ARRAY', 'Expected ARRAY value');
-    assert(result[0].children[0].children.length === 2, 'Expected 2 array elements');
+    assertEquals(result.length, 1);
+    assertEquals(result[0].children[0].node_type, 'ARRAY');
+    assertEquals(result[0].children[0].children.length, 2);
 });
 
 test('Parse multiple objects on separate lines', () => {
     const result = parse_json_objects(['{"id": 1}', '{"id": 2}'], [1, 2]);
-    assert(result.length === 2, 'Expected 2 records');
-    assert(result[0].children[0].value === '1', 'Expected id 1');
-    assert(result[1].children[0].value === '2', 'Expected id 2');
+    assertEquals(result.length, 2);
+    assertEquals(result[0].children[0].value, '1');
+    assertEquals(result[1].children[0].value, '2');
 });
 
 test('Parse object with all scalar types', () => {
     const result = parse_json_objects(['{"str": "text", "num": 42, "bool": true, "null": null}'], [1]);
-    assert(result[0].children.length === 4, 'Expected 4 children');
-    assert(result[0].children[0].value === '"text"', 'Expected string value');
-    assert(result[0].children[1].value === '42', 'Expected number value');
-    assert(result[0].children[2].value === 'true', 'Expected boolean value');
-    assert(result[0].children[3].value === 'null', 'Expected null value');
+    assertEquals(result[0].children.length, 4);
+    assertEquals(result[0].children[0].value, '"text"');
+    assertEquals(result[0].children[1].value, '42');
+    assertEquals(result[0].children[2].value, 'true');
+    assertEquals(result[0].children[3].value, 'null');
 });
 
 test('Parse deeply nested structure', () => {
     const result = parse_json_objects(['{"a": {"b": {"c": {"d": 1}}}}'], [1]);
-    assert(result.length === 1, 'Expected 1 record');
+    assertEquals(result.length, 1);
     let node = result[0].children[0];
-    assert(node.node_type === 'OBJECT', 'Level 1: Expected OBJECT');
+    assertEquals(node.node_type, 'OBJECT', 'Level 1');
     node = node.children[0];
-    assert(node.node_type === 'OBJECT', 'Level 2: Expected OBJECT');
+    assertEquals(node.node_type, 'OBJECT', 'Level 2');
     node = node.children[0];
-    assert(node.node_type === 'OBJECT', 'Level 3: Expected OBJECT');
+    assertEquals(node.node_type, 'OBJECT', 'Level 3');
     node = node.children[0];
-    assert(node.node_type === 'SCALAR', 'Level 4: Expected SCALAR');
-    assert(node.value === '1', 'Expected value 1');
-    assert(node.parent_key === '"d"', 'Expected parent key "d"');
-    assert(node.parent_key_position.line === 1, 'Expected parent key position line 1');
-    assert(node.parent_key_position.column === 19, 'Expected parent key position column 19');
+    assertEquals(node.node_type, 'SCALAR', 'Level 4');
+    assertEquals(node.value, '1');
+    assertEquals(node.parent_key, '"d"');
+    assertEquals(node.parent_key_position.line, 1);
+    assertEquals(node.parent_key_position.column, 19);
 });
 
 test('Parse with line numbers', () => {
     const result = parse_json_objects(['{"key": "value"}'], [42]);
-    assert(result[0].start_position.line === 42, 'Expected line number 42');
+    assertEquals(result[0].start_position.line, 42);
 });
 
 test('Parse mixed valid and invalid content', () => {
@@ -388,14 +401,14 @@ test('Error on mismatched brackets', () => {
 
 test('Parse empty object in array', () => {
     const result = parse_json_objects(['[{}]'], [1]);
-    assert(result[0].children[0].node_type === 'OBJECT', 'Expected empty OBJECT in array');
-    assert(result[0].children[0].children.length === 0, 'Expected no children in empty object');
+    assertEquals(result[0].children[0].node_type, 'OBJECT');
+    assertEquals(result[0].children[0].children.length, 0);
 });
 
 test('Parse empty array in object', () => {
     const result = parse_json_objects(['{"arr": []}'], [1]);
-    assert(result[0].children[0].node_type === 'ARRAY', 'Expected empty ARRAY');
-    assert(result[0].children[0].children.length === 0, 'Expected no children in empty array');
+    assertEquals(result[0].children[0].node_type, 'ARRAY');
+    assertEquals(result[0].children[0].children.length, 0);
 });
 
 test('Parse with leading incomplete JSON', () => {
@@ -405,9 +418,9 @@ test('Parse with leading incomplete JSON', () => {
     const lines = text.split('\n');
     const line_nums = lines.map((_, i) => i + 1);
     const result = parse_json_objects(lines, line_nums);
-    assert(result.length === 2, 'Expected 2 complete records');
-    assert(result[0].children[0].value === '1', 'Expected id 1');
-    assert(result[1].children[0].value === '2', 'Expected id 2');
+    assertEquals(result.length, 2);
+    assertEquals(result[0].children[0].value, '1');
+    assertEquals(result[1].children[0].value, '2');
 });
 
 test('Parse with trailing incomplete object JSON', () => {
@@ -417,9 +430,9 @@ test('Parse with trailing incomplete object JSON', () => {
     const lines = text.split('\n');
     const line_nums = lines.map((_, i) => i + 1);
     const result = parse_json_objects(lines, line_nums);
-    assert(result.length === 2, 'Expected 2 complete records');
-    assert(result[0].children[0].value === '1', 'Expected id 1');
-    assert(result[1].children[0].value === '2', 'Expected id 2');
+    assertEquals(result.length, 2);
+    assertEquals(result[0].children[0].value, '1');
+    assertEquals(result[1].children[0].value, '2');
 });
 
 test('Parse with trailing incomplete array JSON', () => {
@@ -429,9 +442,9 @@ test('Parse with trailing incomplete array JSON', () => {
     const lines = text.split('\n');
     const line_nums = lines.map((_, i) => i + 1);
     const result = parse_json_objects(lines, line_nums);
-    assert(result.length === 2, 'Expected 2 complete records');
-    assert(result[0].children[0].value === '1', 'Expected id 1');
-    assert(result[1].children[0].value === '2', 'Expected id 2');
+    assertEquals(result.length, 2);
+    assertEquals(result[0].children[0].value, '1');
+    assertEquals(result[1].children[0].value, '2');
 });
 
 test('Parse with both leading and trailing incomplete JSON', () => {
@@ -443,10 +456,10 @@ test('Parse with both leading and trailing incomplete JSON', () => {
     const lines = text.split('\n');
     const line_nums = lines.map((_, i) => i + 1);
     const result = parse_json_objects(lines, line_nums);
-    assert(result.length === 3, 'Expected 3 complete records');
-    assert(result[0].children[0].value === '1', 'Expected id 1');
-    assert(result[1].children[0].value === '2', 'Expected id 2');
-    assert(result[2].children[0].value === '3', 'Expected id 3');
+    assertEquals(result.length, 3);
+    assertEquals(result[0].children[0].value, '1');
+    assertEquals(result[1].children[0].value, '2');
+    assertEquals(result[2].children[0].value, '3');
 });
 
 test('Parse with indented incomplete leading JSON', () => {
@@ -457,8 +470,8 @@ test('Parse with indented incomplete leading JSON', () => {
     const lines = text.split('\n');
     const line_nums = lines.map((_, i) => i + 1);
     const result = parse_json_objects(lines, line_nums);
-    assert(result.length === 1, 'Expected 1 complete record');
-    assert(result[0].children[0].value === 'true', 'Expected valid: true');
+    assertEquals(result.length, 1);
+    assertEquals(result[0].children[0].value, 'true');
 });
 
 test('Parse multiline object with leading incomplete', () => {
@@ -474,10 +487,10 @@ test('Parse multiline object with leading incomplete', () => {
     const lines = text.split('\n');
     const line_nums = lines.map((_, i) => i + 1);
     const result = parse_json_objects(lines, line_nums);
-    assert(result.length === 2, 'Expected 2 complete records');
-    assert(result[0].children.length === 2, 'Expected 2 fields in first object');
-    assert(result[0].children[0].value === '"John"', 'Expected name John');
-    assert(result[1].children[0].value === '"Jane"', 'Expected name Jane');
+    assertEquals(result.length, 2);
+    assertEquals(result[0].children.length, 2);
+    assertEquals(result[0].children[0].value, '"John"');
+    assertEquals(result[1].children[0].value, '"Jane"');
 });
 
 test('Leading Trailing Incomplete', () => {
@@ -501,20 +514,20 @@ test('Leading Trailing Incomplete', () => {
     const lines = text.split('\n');
     const line_nums = lines.map((_, i) => i + 1);
     const result = parse_json_objects(lines, line_nums);
-    assert(result.length === 9, 'Expected 9 complete records');
-    assert(result[0].children[0].value === '"before1"', 'Expected id "before1"');
-    assert(result[0].relative_depth === 2, 'Expected relative depth 2');
-    assert(result[1].children[0].value === '"before2"', 'Expected id "before2"');
-    assert(result[1].relative_depth === 1, 'Expected relative depth 1');
-    assert(result[2].children[0].value === '"before3"', 'Expected id "before3"');
-    assert(result[3].children[0].value === '"inside1"', 'Expected id "inside1"');
-    assert(result[3].relative_depth === 0, 'Expected relative depth 0');
-    assert(result[4].children[0].value === '"inside2"', 'Expected id "inside2"');
-    assert(result[5].children[0].value === '"after1"', 'Expected id "after1"');
-    assert(result[6].children[0].value === '"after2"', 'Expected id "after2"');
-    assert(result[7].children[0].value === '"after3"', 'Expected id "after3"');
-    assert(result[8].children[0].value === '"after4"', 'Expected id "after4"');
-    assert(result[8].relative_depth === 3, 'Expected relative depth 3');
+    assertEquals(result.length, 9);
+    assertEquals(result[0].children[0].value, '"before1"');
+    assertEquals(result[0].relative_depth, 2);
+    assertEquals(result[1].children[0].value, '"before2"');
+    assertEquals(result[1].relative_depth, 1);
+    assertEquals(result[2].children[0].value, '"before3"');
+    assertEquals(result[3].children[0].value, '"inside1"');
+    assertEquals(result[3].relative_depth, 0);
+    assertEquals(result[4].children[0].value, '"inside2"');
+    assertEquals(result[5].children[0].value, '"after1"');
+    assertEquals(result[6].children[0].value, '"after2"');
+    assertEquals(result[7].children[0].value, '"after3"');
+    assertEquals(result[8].children[0].value, '"after4"');
+    assertEquals(result[8].relative_depth, 3);
 });
 
 
@@ -528,10 +541,8 @@ test('Parse with invalid syntax in middle', () => {
 {"id": 2}`;
     const lines = text.split('\n');
     const line_nums = lines.map((_, i) => i + 1);
-    // This should throw because the incomplete array will cause parsing error
     const result = parse_json_objects(lines, line_nums);
-    assert(result.length === 2, 'Expected 2 complete records');
-    //assertThrows(() => parse_json_objects(lines, line_nums), 'Should throw on incomplete array', JsonSyntaxError);
+    assertEquals(result.length, 2);
 });
 
 test('Parse with empty lines between objects', () => {
@@ -543,10 +554,10 @@ test('Parse with empty lines between objects', () => {
     const lines = text.split('\n');
     const line_nums = lines.map((_, i) => i + 1);
     const result = parse_json_objects(lines, line_nums);
-    assert(result.length === 3, 'Expected 3 complete records');
-    assert(result[0].children[0].value === '1', 'Expected id 1');
-    assert(result[1].children[0].value === '2', 'Expected id 2');
-    assert(result[2].children[0].value === '3', 'Expected id 3');
+    assertEquals(result.length, 3);
+    assertEquals(result[0].children[0].value, '1');
+    assertEquals(result[1].children[0].value, '2');
+    assertEquals(result[2].children[0].value, '3');
 });
 
 // Parse command line arguments
