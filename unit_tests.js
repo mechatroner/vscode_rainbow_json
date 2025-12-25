@@ -1,13 +1,23 @@
 // Import the tokenize_line function
 const { tokenize_json_line, parse_json_objects, JsonTokenizerError, JsonSyntaxError, JsonIncompleteError } = require('./json_parse.js');
 
-// Simple test runner
+/**
+ * @param {boolean} condition
+ * @param {string} message
+ * @throws {Error}
+ */
 function assert(condition, message) {
     if (!condition) {
         throw new Error(`Assertion failed: ${message}`);
     }
 }
 
+/**
+ * @param {function(): void} fn
+ * @param {string} message
+ * @param {function|null} [expectedErrorType=null]
+ * @throws {Error}
+ */
 function assertThrows(fn, message, expectedErrorType = null) {
     try {
         fn();
@@ -24,14 +34,24 @@ function assertThrows(fn, message, expectedErrorType = null) {
 }
 
 // Test registry
+/** @type {{id: number, name: string, fn: function(): void}[]} */
 const allTests = [];
+/** @type {number} */
 let testIdCounter = 1;
 
+/**
+ * @param {string} name
+ * @param {function(): void} fn
+ */
 function test(name, fn) {
     const testId = testIdCounter++;
     allTests.push({ id: testId, name, fn });
 }
 
+/**
+ * @param {number[]|null} [testIds=null]
+ * @param {boolean} [rethrowOnFailure=false]
+ */
 function runTests(testIds = null, rethrowOnFailure = false) {
     let testsToRun = allTests;
 
@@ -66,6 +86,9 @@ function runTests(testIds = null, rethrowOnFailure = false) {
     console.log(`\nResults: ${passCount} passed, ${failCount} failed, ${testsToRun.length} total`);
 }
 
+/**
+ * @returns {void}
+ */
 function listTests() {
     console.log('Available tests:\n');
     for (const { id, name } of allTests) {
@@ -329,6 +352,9 @@ test('Parse deeply nested structure', () => {
     node = node.children[0];
     assert(node.node_type === 'SCALAR', 'Level 4: Expected SCALAR');
     assert(node.value === '1', 'Expected value 1');
+    assert(node.parent_key === '"d"', 'Expected parent key "d"');
+    assert(node.parent_key_position.line === 1, 'Expected parent key position line 1');
+    assert(node.parent_key_position.column === 19, 'Expected parent key position column 19');
 });
 
 test('Parse with line numbers', () => {

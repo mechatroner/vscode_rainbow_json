@@ -1,5 +1,10 @@
 // Json tokens can't span multiple lines so we can tokenize them on line-by-line basis which is nice.
 
+/**
+ * @param {boolean} condition
+ * @param {string} message
+ * @throws {Error}
+ */
 function assert(condition, message) {
     if (!condition) {
         throw new Error(`Assertion failed: ${message}`);
@@ -8,6 +13,11 @@ function assert(condition, message) {
 
 // Custom error types
 class JsonTokenizerError extends Error {
+    /**
+     * @param {string} message
+     * @param {number} line_num
+     * @param {number} position
+     */
     constructor(message, line_num, position) {
         super(message);
         this.name = 'JsonTokenizerError';
@@ -17,6 +27,11 @@ class JsonTokenizerError extends Error {
 }
 
 class JsonSyntaxError extends Error {
+    /**
+     * @param {string} message
+     * @param {number} line_num
+     * @param {number} position
+     */
     constructor(message, line_num, position) {
         super(message);
         this.name = 'JsonSyntaxError';
@@ -26,6 +41,9 @@ class JsonSyntaxError extends Error {
 }
 
 class JsonIncompleteError extends Error {
+    /**
+     * @param {string} message
+     */
     constructor(message) {
         super(message);
         this.name = 'JsonIncompleteError';
@@ -33,6 +51,11 @@ class JsonIncompleteError extends Error {
 }
 
 class JsonToken {
+    /**
+     * @param {string} value
+     * @param {number} line_num
+     * @param {number} position
+     */
     constructor(value, line_num, position) {
         this.value = value;
         this.line_num = line_num;
@@ -65,12 +88,21 @@ class JsonToken {
         return this.brace_open || this.brace_close || this.bracket_open || this.bracket_close;
     }
 
+    /**
+     * @param {JsonToken} openToken
+     */
     isMatchingClose(openToken) {
         return (this.brace_close && openToken.brace_open) || 
                (this.bracket_close && openToken.bracket_open);
     }
 }
 
+/**
+ * @param {string} line
+ * @param {number} line_num
+ * @param {JsonToken[]} dst_tokens
+ * @throws {JsonTokenizerError}
+ */
 function tokenize_json_line_in_place(line, line_num, dst_tokens) {
     let cursor = 0;
     const length = line.length;
@@ -134,6 +166,11 @@ function tokenize_json_line_in_place(line, line_num, dst_tokens) {
     }
 }
 
+/**
+ * @param {string} line
+ * @param {number|null} [line_num=null]
+ * @returns {JsonToken[]}
+ */
 function tokenize_json_line(line, line_num=null) {
     tokens = []
     tokenize_json_line_in_place(line, line_num, tokens);
@@ -142,9 +179,24 @@ function tokenize_json_line(line, line_num=null) {
 
 
 class Position {
+    /**
+     * @param {number} line
+     * @param {number} column
+     */
     constructor(line, column) {
         this.line = line;
         this.column = column;
+    }
+}
+
+class Range {
+    /**
+     * @param {Position} start_position
+     * @param {Position} end_position
+     */
+    constructor(start_position, end_position) {
+        this.start_position = start_position;
+        this.end_position = end_position;
     }
 }
 
@@ -162,9 +214,17 @@ const ARRAY_NODE_TYPE = 'ARRAY';
 const SCALAR_NODE_TYPE = 'SCALAR';
 
 class RainbowJsonNode {
-    constructor(node_type, parent_key, parent_array_index, start_position) {
+    /**
+     * @param {string} node_type
+     * @param {string|null} parent_key
+     * @param {Position|null} parent_key_position
+     * @param {number|null} parent_array_index
+     * @param {Position} start_position
+     */
+    constructor(node_type, parent_key, parent_key_position, parent_array_index, start_position) {
         this.node_type = node_type;
         this.parent_key = parent_key; // Key can be null for array or for the root node.
+        this.parent_key_position = parent_key_position;
         this.parent_array_index = parent_array_index; // null value means it is not an array element but was mapped directly by the key.
         this.start_position = start_position;
         this.end_position = null;
@@ -175,15 +235,23 @@ class RainbowJsonNode {
 }
 
 class PDAStackFrame {
+    /**
+     * @param {RainbowJsonNode} node
+     */
     constructor(node) {
         this.node = node;
         this.current_nfa_states = [];
         this.current_array_index = 0;
         this.current_key = null;
+        this.current_key_position = null;
     }
 }
 
 class AutomataState {
+    /**
+     * @param {function(PDAStackFrame[], JsonToken): boolean} handler_function
+     * @param {string} error_string
+     */
     constructor(handler_function, error_string) {
         this.handler_function = handler_function;
         this.error_string = error_string;
@@ -193,16 +261,25 @@ class AutomataState {
 // Forward declarations - will be defined after all handlers
 let expect_key_state, expect_colon_state, expect_value_state, expect_comma_state, expect_object_end_state, expect_array_end_state;
 
+/**
+ * @param {PDAStackFrame[]} pda_stack
+ * @param {JsonToken} token
+ */
 function handle_key_token(pda_stack, token) {
     if (!token.string) {
         return false;
     }
     let ctx = pda_stack[pda_stack.length - 1];
     ctx.current_key = token.value;
+    ctx.current_key_position = new Position(token.line_num, token.position);
     ctx.current_nfa_states = [expect_colon_state];
     return true;
 }
 
+/**
+ * @param {PDAStackFrame[]} pda_stack
+ * @param {JsonToken} token
+ */
 function handle_colon_token(pda_stack, token) {
     if (!token.colon) {
         return false;
@@ -212,14 +289,19 @@ function handle_colon_token(pda_stack, token) {
     return true;
 }
 
+/**
+ * @param {PDAStackFrame[]} pda_stack
+ * @param {JsonToken} token
+ */
 function handle_scalar_value(pda_stack, token) {
     if (!token.string && !token.number && !token.constant) {
         return false;
     }
     let ctx = pda_stack[pda_stack.length - 1];
     let scalar_key = ctx.node.node_type === OBJECT_NODE_TYPE ? ctx.current_key : null;
+    let scalar_key_position = ctx.node.node_type === OBJECT_NODE_TYPE ? ctx.current_key_position : null;
     let scalar_index = ctx.node.node_type === ARRAY_NODE_TYPE ? ctx.current_array_index : null;
-    let scalar_node = new RainbowJsonNode(SCALAR_NODE_TYPE, scalar_key, scalar_index, new Position(token.line_num, token.position));
+    let scalar_node = new RainbowJsonNode(SCALAR_NODE_TYPE, scalar_key, scalar_key_position, scalar_index, new Position(token.line_num, token.position));
     scalar_node.end_position = new Position(token.line_num, token.position + token.value.length);
     scalar_node.value = token.value;
     ctx.node.children.push(scalar_node);
@@ -232,14 +314,19 @@ function handle_scalar_value(pda_stack, token) {
     return true;
 }
 
+/**
+ * @param {PDAStackFrame[]} pda_stack
+ * @param {JsonToken} token
+ */
 function handle_open_brace(pda_stack, token) {
     if (!token.brace_open) {
         return false;
     }
     let ctx = pda_stack[pda_stack.length - 1];
     let child_key = ctx.node.node_type === OBJECT_NODE_TYPE ? ctx.current_key : null;
+    let child_key_position = ctx.node.node_type === OBJECT_NODE_TYPE ? ctx.current_key_position : null;
     let child_index = ctx.node.node_type === ARRAY_NODE_TYPE ? ctx.current_array_index : null;
-    let child_node = new RainbowJsonNode(OBJECT_NODE_TYPE, child_key, child_index, new Position(token.line_num, token.position));
+    let child_node = new RainbowJsonNode(OBJECT_NODE_TYPE, child_key, child_key_position, child_index, new Position(token.line_num, token.position));
     ctx.node.children.push(child_node);
     
     if (ctx.node.node_type === OBJECT_NODE_TYPE) {
@@ -254,14 +341,19 @@ function handle_open_brace(pda_stack, token) {
     return true;
 }
 
+/**
+ * @param {PDAStackFrame[]} pda_stack
+ * @param {JsonToken} token
+ */
 function handle_open_bracket(pda_stack, token) {
     if (!token.bracket_open) {
         return false;
     }
     let ctx = pda_stack[pda_stack.length - 1];
     let child_key = ctx.node.node_type === OBJECT_NODE_TYPE ? ctx.current_key : null;
+    let child_key_position = ctx.node.node_type === OBJECT_NODE_TYPE ? ctx.current_key_position : null;
     let child_index = ctx.node.node_type === ARRAY_NODE_TYPE ? ctx.current_array_index : null;
-    let child_node = new RainbowJsonNode(ARRAY_NODE_TYPE, child_key, child_index, new Position(token.line_num, token.position));
+    let child_node = new RainbowJsonNode(ARRAY_NODE_TYPE, child_key, child_key_position, child_index, new Position(token.line_num, token.position));
     ctx.node.children.push(child_node);
     
     if (ctx.node.node_type === OBJECT_NODE_TYPE) {
@@ -276,6 +368,10 @@ function handle_open_bracket(pda_stack, token) {
     return true;
 }
 
+/**
+ * @param {PDAStackFrame[]} pda_stack
+ * @param {JsonToken} token
+ */
 function handle_comma(pda_stack, token) {
     if (!token.comma) {
         return false;
@@ -290,6 +386,10 @@ function handle_comma(pda_stack, token) {
     return true;
 }
 
+/**
+ * @param {PDAStackFrame[]} pda_stack
+ * @param {JsonToken} token
+ */
 function handle_object_end(pda_stack, token) {
     if (!token.brace_close) {
         return false;
@@ -303,6 +403,10 @@ function handle_object_end(pda_stack, token) {
     return true;
 }
 
+/**
+ * @param {PDAStackFrame[]} pda_stack
+ * @param {JsonToken} token
+ */
 function handle_array_end(pda_stack, token) {
     if (!token.bracket_close) {
         return false;
@@ -316,6 +420,10 @@ function handle_array_end(pda_stack, token) {
     return true;
 }
 
+/**
+ * @param {PDAStackFrame[]} pda_stack
+ * @param {JsonToken} token
+ */
 function handle_value(pda_stack, token) {
     return handle_scalar_value(pda_stack, token) || handle_open_brace(pda_stack, token) || handle_open_bracket(pda_stack, token);
 }
@@ -337,6 +445,12 @@ function generate_error_message(nfa_states) {
     return `Expected ${expected_parts.join(', ')} or ${last}`;
 }
 
+/**
+ * @param {JsonToken[]} tokens
+ * @param {number} token_idx
+ * @returns {[RainbowJsonNode|null, number]}
+ * @throws {JsonSyntaxError|JsonIncompleteError}
+ */
 function consume_json_record(tokens, token_idx) {
     if (token_idx >= tokens.length) {
         return [null, token_idx];
@@ -348,7 +462,7 @@ function consume_json_record(tokens, token_idx) {
     }
     
     let root_node_type = start_token.brace_open ? OBJECT_NODE_TYPE : ARRAY_NODE_TYPE;
-    let root = new RainbowJsonNode(root_node_type, null, null, new Position(start_token.line_num, start_token.position));
+    let root = new RainbowJsonNode(root_node_type, /*parent_key=*/null, /*parent_key_position=*/null, /*parent_array_index=*/null, new Position(start_token.line_num, start_token.position));
     
     let pda_stack = [new PDAStackFrame(root)];
     if (root_node_type === OBJECT_NODE_TYPE) {
@@ -389,6 +503,11 @@ function consume_json_record(tokens, token_idx) {
 
 
 class CompleteObjectTokenGroup {
+    /**
+     * @param {number} first_token_idx
+     * @param {number} last_token_idx
+     * @param {number} relative_depth
+     */
     constructor(first_token_idx, last_token_idx, relative_depth) {
         this.first_token_idx = first_token_idx;
         this.last_token_idx = last_token_idx;
@@ -397,12 +516,20 @@ class CompleteObjectTokenGroup {
 }
 
 class ObjectGroupStackFrame {
+    /**
+     * @param {number} first_token_idx
+     */
     constructor(first_token_idx) {
         this.first_token_idx = first_token_idx;
         this.complete_children_groups = [];
     }
 }
 
+/**
+ * @param {JsonToken[]} tokens
+ * @returns {CompleteObjectTokenGroup[]}
+ * @throws {JsonSyntaxError}
+ */
 function group_tokens_into_full_object_groups(tokens) {
     // In the generic case we can have some trailing lines and some starting lines with incomplete objects.
     // But these first and last incomplete objects can have some child objects fully complete - we need to add those.
@@ -459,6 +586,12 @@ function group_tokens_into_full_object_groups(tokens) {
 }
 
 
+/**
+ * @param {string[]} lines
+ * @param {number[]} line_nums
+ * @returns {RainbowJsonNode[]}
+ * @throws {JsonTokenizerError|JsonSyntaxError}
+ */
 function parse_json_objects(lines, line_nums) {
     // Using first unindented container line to start parsing is a hack, but it should probably work OK in practice.
     // This can be fixed later.
@@ -478,4 +611,4 @@ function parse_json_objects(lines, line_nums) {
     return records;
 }
 
-module.exports = { tokenize_json_line, parse_json_objects, JsonTokenizerError, JsonSyntaxError, JsonIncompleteError };
+module.exports = { tokenize_json_line, parse_json_objects, JsonTokenizerError, JsonSyntaxError, JsonIncompleteError, RainbowJsonNode};

@@ -1,12 +1,20 @@
 const vscode = require('vscode');
 const json_parse = require('./json_parse')
 
+/** @type {vscode.Disposable|null} */
 let rainbow_token_event = null;
 
 const all_token_types = ['rainbow1', 'rainbow2', 'rainbow3', 'rainbow4', 'rainbow5', 'rainbow6', 'rainbow7', 'rainbow8', 'rainbow9', 'rainbow10'];
 const tokens_legend = new vscode.SemanticTokensLegend(all_token_types);
 
 
+/**
+ * @param {typeof vscode} vscode
+ * @param {vscode.TextDocument} doc
+ * @param {vscode.Range} range
+ * @param {number} margin
+ * @returns {vscode.Range}
+ */
 function extend_range_by_margin(vscode, doc, range, margin) {
     let begin_line = Math.max(0, range.start.line - margin);
     let end_line_inclusive = Math.min(doc.lineCount - 1, range.end.line + margin);
@@ -14,6 +22,12 @@ function extend_range_by_margin(vscode, doc, range, margin) {
 }
 
 
+/**
+ * @param {typeof vscode} vscode
+ * @param {vscode.TextDocument} doc
+ * @param {vscode.Range} range
+ * @returns {[string[], number[]]}
+ */
 function parse_document_range(vscode, doc, range) {
     let lines = [];
 	let line_nums = [];
@@ -30,19 +44,27 @@ function parse_document_range(vscode, doc, range) {
 
 
 
+/**
+ * @param {number} depth
+ * @returns {string}
+ */
 function get_rainbow_token_type(depth) {
     return all_token_types[depth % all_token_types.length];
 }
 
+/**
+ * @param {vscode.SemanticTokensBuilder} builder
+ * @param {json_parse.RainbowJsonNode} node
+ * @param {number} depth
+ */
 function push_node_tokens(builder, node, depth) {
     // Push tokens for this node based on its depth
     let token_type = get_rainbow_token_type(depth);
     
     if (node.node_type === 'SCALAR') {
-        // For scalar nodes, highlight the value
-        let start_line = node.start_position.line;
-        let start_col = node.start_position.column;
-        let end_col = node.end_position.column;
+        let start_line = node.parent_key_position.line;
+        let start_col = node.parent_key_position.column;
+        let end_col = start_col + node.parent_key.length;
         let length = end_col - start_col;
         if (length > 0) {
 			let current_range = new vscode.Range(start_line, start_col, start_line, end_col);
@@ -59,6 +81,12 @@ class RainbowTokenProvider {
     // We don't utilize typescript `implement` interface keyword, because TS doesn't seem to be exporting interfaces to JS (unlike classes).
     constructor() {
     }
+    
+    /**
+     * @param {vscode.TextDocument} document
+     * @param {vscode.Range} range
+     * @param {vscode.CancellationToken} _token
+     */
     async provideDocumentRangeSemanticTokens(document, range, _token) {
 		console.log('providing tokens');
 		if (document.languageId != "json" && document.languageId != "jsonl") {
@@ -119,7 +147,6 @@ function activate(context) {
 	context.subscriptions.push(disposable);
 }
 
-// this method is called when your extension is deactivated
 function deactivate() {}
 
 // eslint-disable-next-line no-undef
