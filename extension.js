@@ -10,7 +10,7 @@ let per_doc_key_frequency_stats = new Map(); // Per-file cached results of most 
 const all_token_types = [/*'rainbow1', */'rainbow2', 'rainbow3', 'rainbow4', 'rainbow5', 'rainbow6', 'rainbow7', 'rainbow8', 'rainbow9', 'rainbow10'];
 const tokens_legend = new vscode.SemanticTokensLegend(all_token_types);
 
-//TODO override existing json grammars or inject a new grammar to override. probably requires grammar contribution point.
+//TODO try to simplify injection grammars that override and cancel out built-in json syntax.
 
 
 
@@ -74,7 +74,7 @@ function collect_keys_from_node(node, path, freq_map) {
     }
 }
 
-function calculate_key_frequency_stats(document, max_num_keys=10) {
+function calculate_key_frequency_stats(document, max_num_keys) {
     let [lines, line_nums] = parse_document_range(vscode, document, new vscode.Range(0, 0, document.lineCount, 0));
     let records;
     try {
@@ -112,7 +112,7 @@ function get_keys_to_highlight(document) {
         return [];
     }
     if (!per_doc_key_frequency_stats.has(document.fileName)) {
-        per_doc_key_frequency_stats.set(document.fileName, calculate_key_frequency_stats(document));
+        per_doc_key_frequency_stats.set(document.fileName, calculate_key_frequency_stats(document, /*max_num_keys=*/5));
     }
     let key_frequency_stats = per_doc_key_frequency_stats.get(document.fileName);
     if (!key_frequency_stats || !key_frequency_stats.length) {
@@ -144,9 +144,15 @@ function push_current_node(keys_to_highlight, builder, node, current_path) {
     }
     let token_type = all_token_types[highlight_index % all_token_types.length];
     let start_line = node.parent_key_position.line;
+    let end_line = start_line;
     let start_col = node.parent_key_position.column;
     let end_col = start_col + node.parent_key.length;
-    let current_range = new vscode.Range(start_line, start_col, start_line, end_col);
+    if (node.node_type === 'SCALAR' && node.value !== null) {
+        // For scalar nodes highlight the whole key-value pair.
+        end_line = node.end_position.line;
+        end_col = node.end_position.column;
+    }
+    let current_range = new vscode.Range(start_line, start_col, end_line, end_col);
     builder.push(current_range, token_type);
 }
 
