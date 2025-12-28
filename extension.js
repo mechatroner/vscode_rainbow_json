@@ -131,7 +131,6 @@ function get_keys_to_highlight(document) {
  * @param {string} path - Current path
  */
 function push_current_node(keys_to_highlight, builder, node, current_path) {
-    // FIXME for SCALAR nodes highlight both key and value.
     let current_path_signature = current_path.slice().reverse().join('->');
     let highlight_index = 0;
     for (highlight_index = 0; highlight_index < keys_to_highlight.length; highlight_index++) {
@@ -216,13 +215,12 @@ class RainbowTokenProvider {
 
 function enable_dynamic_semantic_tokenization() {
     // Some themes can disable semantic highlighting e.g. "Tokyo Night" https://marketplace.visualstudio.com/items?itemName=enkia.tokyo-night, so we explicitly override the default setting in "configurationDefaults" section of package.json.
-    // TODO add all other json dialects to "configurationDefaults":"editor.semanticHighlighting.enabled" override in order to enable comment line highlighting.
     // Conflict with some other extensions might also cause semantic highlighting to completely fail (although this could be caused by the theme issue described above), see https://github.com/mechatroner/vscode_rainbow_csv/issues/149.
     let token_provider = new RainbowTokenProvider();
     if (rainbow_token_event !== null) {
         rainbow_token_event.dispose();
     }
-	// TODO handle jsonc - needs parser adjustment.
+	// TODO handle jsonc - needs parser adjustment. Also add jsonc to "configurationDefaults":"editor.semanticHighlighting.enabled" list.
     let document_selector = [{ language: "json" }, { language: "jsonl" }];
     rainbow_token_event = vscode.languages.registerDocumentRangeSemanticTokensProvider(document_selector, token_provider, tokens_legend);
 }
