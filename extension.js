@@ -10,6 +10,9 @@ let per_doc_key_frequency_stats = new Map(); // Per-file cached results of most 
 const all_token_types = [/*'rainbow1', */'rainbow2', 'rainbow3', 'rainbow4', 'rainbow5', 'rainbow6', 'rainbow7', 'rainbow8', 'rainbow9', 'rainbow10'];
 const tokens_legend = new vscode.SemanticTokensLegend(all_token_types);
 
+//TODO override existing json grammars or inject a new grammar to override. probably requires grammar contribution point.
+
+
 
 /**
  * @param {typeof vscode} vscode

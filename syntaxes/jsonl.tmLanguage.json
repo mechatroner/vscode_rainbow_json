@@ -1,0 +1,26 @@
+{
+	"scopeName": "source.jsonl.rainbow",
+	"injectionSelector": "L:source.json.lines -comment",
+	"patterns": [
+		{
+			"match": "\"[^\"\\\\]*(?:\\\\.[^\"\\\\]*)*\"\\s*:",
+			"name": "meta.structure.dictionary.key.jsonl.rainbow"
+		},
+		{
+			"match": "\"[^\"\\\\]*(?:\\\\.[^\"\\\\]*)*\"",
+			"name": "meta.structure.dictionary.value.jsonl.rainbow"
+		},
+		{
+			"match": "-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?",
+			"name": "meta.structure.dictionary.value.jsonl.rainbow"
+		},
+		{
+			"match": "\\b(?:true|false|null)\\b",
+			"name": "meta.structure.dictionary.value.jsonl.rainbow"
+		},
+		{
+			"match": "[\\[\\]{}:,]",
+			"name": "meta.structure.jsonl.rainbow"
+		}
+	]
+}
