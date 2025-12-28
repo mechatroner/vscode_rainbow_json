@@ -46,44 +46,48 @@ function parse_document_range(vscode, doc, range) {
 
 
 /**
- * Recursively collects all (key, depth) pairs from a node
+ * Recursively collects all (key, path) pairs from a node
  * @param {json_parse.RainbowJsonNode} node
- * @param {number} depth
- * @param {Map<string, {count: number, order: number}>} freq_map
+ * @param {string[]} path - Current path like ["root", "foo", "bar"]
+ * @param {Map<string, {count: number, order: number, name: string, path: string}>} freq_map
  */
-function collect_keys_from_node(node, depth, freq_map) {
-    if (node.parent_key) {
-        let key = `${node.parent_key}:${depth}`;
-        if (freq_map.has(key)) {
-            freq_map.get(key).count++;
+function collect_keys_from_node(node, path, freq_map) {
+    path = path.slice();
+    if (node.parent_key) { // Array elements don't have parent keys.
+        path.push(node.parent_key);
+        let path_key = path.join('->');
+        if (freq_map.has(path_key)) {
+            freq_map.get(path_key).count++;
         } else {
             let key_count = freq_map.size;
-            freq_map.set(key, { count: 1, order: key_count, name: node.parent_key, depth: depth });
+            freq_map.set(path_key, { count: 1, order: key_count, path: path.slice() });
         }
     }
     
     if (node.children) {
         for (let child of node.children) {
-            collect_keys_from_node(child, depth + 1, freq_map);
+            collect_keys_from_node(child, path, freq_map);
         }
     }
 }
 
 function calculate_key_frequency_stats(document, max_num_keys=10) {
-    let [lines, line_nums] = parse_document_range(vscode, document, new vscode.Range(0, 0, 1000, 0));
+    let [lines, line_nums] = parse_document_range(vscode, document, new vscode.Range(0, 0, document.lineCount, 0));
     let records;
     try {
+        // TODO in stats calculation we can do less robust error handling than in incremental parsing to ensure that we can use 'root' as the first path element.
         records = json_parse.parse_json_objects(lines, line_nums);
     } catch (e) {
         console.log('JSON parsing error in frequency stats:', e.message);
         return [];
     }
     
-    // Collect all (key, depth) pairs with frequency and first-seen order
+    // Collect all (key, path) pairs with frequency and first-seen order
     let freq_map = new Map();    
     for (let record of records) {
-        let base_depth = record.relative_depth || 0;
-        collect_keys_from_node(record, base_depth, freq_map);
+        // TODO: consider using 'root' as the first element here after making parsing in frequency stats more strict. 
+        // Using `root` would also allow matching to incremental matches to be more strict if it also adds 'root' for fully parsed records without incomplete parents.
+        collect_keys_from_node(record, [], freq_map);
     }
     
     // Convert to array and sort by frequency (desc), then by first-seen order (asc) for ties
@@ -95,8 +99,8 @@ function calculate_key_frequency_stats(document, max_num_keys=10) {
             return a.order - b.order;
         });
     
-    // Return top 10 most frequent (key, depth) pairs
-    return sorted_pairs.slice(0, max_num_keys).map(item => ({ key: item.name, depth: item.depth, count: item.count }));
+    // Return top N most frequent (key, path) pairs
+    return sorted_pairs.slice(0, max_num_keys).map(item => ({ path: item.path, count: item.count }));
 }
 
 function get_keys_to_highlight(document) {
@@ -112,25 +116,30 @@ function get_keys_to_highlight(document) {
         console.log('Key frequency stats empty. Returning.');
         return [];
     }
-    return key_frequency_stats.map(stat => `${stat.key}:${stat.depth}`);
+    // Reverse from root -> leaf to leaf -> root so that we can do prefix matching more naturally.
+    return key_frequency_stats.map(stat => stat.path.slice().reverse().join('->'));
 }
 
 
 /**
- * @param {string[]} keys_to_highlight
+ * @param {string[]} keys_to_highlight - Array of paths like "foo->bar"
  * @param {vscode.SemanticTokensBuilder} builder
  * @param {json_parse.RainbowJsonNode} node
- * @param {number} depth
+ * @param {string} path - Current path
  */
-function push_current_node(keys_to_highlight, builder, node, depth) {
+function push_current_node(keys_to_highlight, builder, node, current_path) {
     // FIXME for SCALAR nodes highlight both key and value.
-    if (!node.parent_key)
-        return;
-    let highligh_index = keys_to_highlight.indexOf(`${node.parent_key}:${depth}`);
-    if (highligh_index === -1) {
+    let current_path_signature = current_path.slice().reverse().join('->');
+    let highlight_index = 0;
+    for (highlight_index = 0; highlight_index < keys_to_highlight.length; highlight_index++) {
+        if (keys_to_highlight[highlight_index].startsWith(current_path_signature)) {
+            break;
+        }
+    }
+    if (highlight_index >= keys_to_highlight.length) {
         return;
     }
-    let token_type = all_token_types[highligh_index % all_token_types.length];
+    let token_type = all_token_types[highlight_index % all_token_types.length];
     let start_line = node.parent_key_position.line;
     let start_col = node.parent_key_position.column;
     let end_col = start_col + node.parent_key.length;
@@ -138,18 +147,20 @@ function push_current_node(keys_to_highlight, builder, node, depth) {
     builder.push(current_range, token_type);
 }
 
-// FIXME: it sort of works, but root_array_example_1.json stops highlighing when scrolling at some point. Fix that.
-
 /**
- * @param {string[]} keys_to_highlight
+ * @param {string[]} keys_to_highlight - Array of paths like "foo->bar"
  * @param {vscode.SemanticTokensBuilder} builder
  * @param {json_parse.RainbowJsonNode} node
- * @param {number} depth
+ * @param {string} path - Current path
  */
-function push_node_tokens(keys_to_highlight, builder, node, depth) {
-    push_current_node(keys_to_highlight, builder, node, depth);
+function push_node_tokens(keys_to_highlight, builder, node, path) {
+    path = path.slice();
+    if (node.parent_key) { // Arrays elements don't have parent_key, so path doesn't change which is exactly what is needed.
+        path.push(node.parent_key);
+        push_current_node(keys_to_highlight, builder, node, path);
+    }
     for (let child of node.children) {
-        push_node_tokens(keys_to_highlight, builder, child, depth + 1);
+        push_node_tokens(keys_to_highlight, builder, child, path);
     }
 }
 
@@ -185,11 +196,8 @@ class RainbowTokenProvider {
         console.log(`Parsed ${records.length} JSON records`);
         const builder = new vscode.SemanticTokensBuilder(tokens_legend);
         
-		// Use depth-based coloring just for test.
         for (let record of records) {
-            // Use relative_depth from the record as the base depth. Children nodes don't have relative_dept set.
-            let base_depth = record.relative_depth || 0;
-            push_node_tokens(keys_to_highlight, builder, record, base_depth);
+            push_node_tokens(keys_to_highlight, builder, record, []);
         }
         
         return builder.build();
