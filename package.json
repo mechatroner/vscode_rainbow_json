@@ -1,46 +1,46 @@
 {
-	"name": "helloworld-minimal-sample",
-	"description": "Minimal HelloWorld example for VS Code",
-	"version": "0.0.1",
-	"publisher": "vscode-samples",
-	"repository": "https://github.com/Microsoft/vscode-extension-samples/helloworld-minimal-sample",
-	"engines": {
-		"vscode": "^1.100.0"
-	},
-	"activationEvents": [
-		"onLanguage:json",
-		"onLanguage:jsonl"
-	],
-	"main": "./extension.js",
-	"contributes": {
-		"commands": [
-			{
-				"command": "extension.helloWorld",
-				"title": "Hello World"
-			}
-		],
-		"configurationDefaults": {
+    "name": "helloworld-minimal-sample",
+    "description": "Minimal HelloWorld example for VS Code",
+    "version": "0.0.1",
+    "publisher": "vscode-samples",
+    "repository": "https://github.com/Microsoft/vscode-extension-samples/helloworld-minimal-sample",
+    "engines": {
+        "vscode": "^1.100.0"
+    },
+    "activationEvents": [
+        "onLanguage:json",
+        "onLanguage:jsonl"
+    ],
+    "main": "./extension.js",
+    "contributes": {
+        "commands": [
+            {
+                "command": "extension.helloWorld",
+                "title": "Hello World"
+            }
+        ],
+        "configurationDefaults": {
           "[json][jsonl]": {
             "editor.semanticHighlighting.enabled": true
           }
         },
-		"grammars": [
-			{
-				"scopeName": "source.json.rainbow",
-				"path": "./syntaxes/json.tmLanguage.json",
-				"injectTo": ["source.json"]
-			},
-			{
-				"scopeName": "source.jsonl.rainbow",
-				"path": "./syntaxes/jsonl.tmLanguage.json",
-				"injectTo": ["source.json.lines"]
-			}
-		],
-		"semanticTokenScopes": [
+        "grammars": [
+            {
+                "scopeName": "source.json.rainbow",
+                "path": "./syntaxes/json.tmLanguage.json",
+                "injectTo": ["source.json"]
+            },
+            {
+                "scopeName": "source.jsonl.rainbow",
+                "path": "./syntaxes/jsonl.tmLanguage.json",
+                "injectTo": ["source.json.lines"]
+            }
+        ],
+        "semanticTokenScopes": [
           {
             "language": "json",
             "scopes": {
-              "rainbow1": ["rainbow1"],
+              "rainbow1": ["source.json"],
               "rainbow2": ["keyword.rainbow2"],
               "rainbow3": ["entity.name.function.rainbow3"],
               "rainbow4": ["comment.rainbow4"],
@@ -56,7 +56,7 @@
           {
             "language": "jsonl",
             "scopes": {
-              "rainbow1": ["rainbow1"],
+              "rainbow1": ["source.json.lines"],
               "rainbow2": ["keyword.rainbow2"],
               "rainbow3": ["entity.name.function.rainbow3"],
               "rainbow4": ["comment.rainbow4"],
@@ -70,14 +70,14 @@
             }
           }
         ]
-	},
-	"scripts": {},
-	"devDependencies": {
-		"@eslint/js": "^9.13.0",
-		"@stylistic/eslint-plugin": "^2.9.0",
-		"@types/vscode": "^1.100.0",
-		"eslint": "^9.13.0",
-		"typescript": "^5.9.2",
-		"typescript-eslint": "^8.39.0"
-	}
+    },
+    "scripts": {},
+    "devDependencies": {
+        "@eslint/js": "^9.13.0",
+        "@stylistic/eslint-plugin": "^2.9.0",
+        "@types/vscode": "^1.100.0",
+        "eslint": "^9.13.0",
+        "typescript": "^5.9.2",
+        "typescript-eslint": "^8.39.0"
+    }
 }

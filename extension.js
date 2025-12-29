@@ -7,10 +7,16 @@ let rainbow_token_event = null;
 let per_doc_key_frequency_stats = new Map(); // Per-file cached results of most frequent keys for auto-highlight.
 
 // Start with rainbow2 because rainbow1 has no color.
-const all_token_types = [/*'rainbow1', */'rainbow2', 'rainbow3', 'rainbow4', 'rainbow5', 'rainbow6', 'rainbow7', 'rainbow8', 'rainbow9', 'rainbow10'];
+// Put rainbow5 and rainbow6 at the end because color matches properties and strings in the default color scheme.
+const rainbow_token_types = [/*'rainbow1', */'rainbow2', 'rainbow3', 'rainbow4', 'rainbow10', 'rainbow9', 'rainbow7', 'rainbow8', 'rainbow5', 'rainbow6'];
+const all_token_types = rainbow_token_types.concat(['rainbow1']);
 const tokens_legend = new vscode.SemanticTokensLegend(all_token_types);
 
 //TODO try to simplify injection grammars that override and cancel out built-in json syntax.
+
+// TODO disable built-in bracket pair colorization. Either through settings override or via API. 
+
+// TODO adjust extension name and other metadata.
 
 
 
@@ -141,7 +147,7 @@ function push_current_node(keys_to_highlight, builder, node, current_path) {
     if (highlight_index >= keys_to_highlight.length) {
         return;
     }
-    let token_type = all_token_types[highlight_index % all_token_types.length];
+    let token_type = rainbow_token_types[highlight_index % rainbow_token_types.length];
     let start_line = node.parent_key_position.line;
     let end_line = start_line;
     let start_col = node.parent_key_position.column;
@@ -203,6 +209,11 @@ class RainbowTokenProvider {
         }
         console.log(`Parsed ${records.length} JSON records`);
         const builder = new vscode.SemanticTokensBuilder(tokens_legend);
+
+        // This doesn't work at all with `rainbow1` and works too well with other rainbow colors (everything is of the same color).
+        // for (let i = 0; i < line_nums.length; i++) {
+        //     builder.push(new vscode.Range(line_nums[i], 0, line_nums[i], lines[i].length), 'rainbow1');
+        // }
         
         for (let record of records) {
             push_node_tokens(keys_to_highlight, builder, record, []);
