@@ -25,18 +25,6 @@
             "editor.bracketPairColorization.enabled": false
           }
         },
-        "grammars": [
-            {
-                "scopeName": "source.json.rainbow",
-                "path": "./syntaxes/json.tmLanguage.json",
-                "injectTo": ["source.json"]
-            },
-            {
-                "scopeName": "source.jsonl.rainbow",
-                "path": "./syntaxes/jsonl.tmLanguage.json",
-                "injectTo": ["source.json.lines"]
-            }
-        ],
         "semanticTokenScopes": [
           {
             "language": "json",

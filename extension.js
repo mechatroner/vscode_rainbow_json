@@ -7,17 +7,16 @@ let rainbow_token_event = null;
 let per_doc_key_frequency_stats = new Map(); // Per-file cached results of most frequent keys for auto-highlight.
 
 // Start with rainbow2 because rainbow1 has no color.
-// Put rainbow5 and rainbow6 at the end because color matches properties and strings in the default color scheme.
-const rainbow_token_types = [/*'rainbow1', */'rainbow2', 'rainbow3', 'rainbow4', 'rainbow10', 'rainbow9', 'rainbow7', 'rainbow8', 'rainbow5', 'rainbow6'];
+const rainbow_token_types = [/*'rainbow1', */'rainbow2', 'rainbow4', 'rainbow10', 'rainbow9', 'rainbow7', 'rainbow8', 'rainbow5', 'rainbow6', 'rainbow3'];
+const ambient_token_type = 'rainbow3';
 const all_token_types = rainbow_token_types.concat(['rainbow1']);
 const tokens_legend = new vscode.SemanticTokensLegend(all_token_types);
 
 //TODO try to simplify injection grammars that override and cancel out built-in json syntax.
 
-// TODO disable built-in bracket pair colorization. Either through settings override or via API. 
-
 // TODO adjust extension name and other metadata.
 
+// TODO toggle bracket pair colorization and the default json syntax through API (so it can be toggled on per-file basis) instead of static settings.
 
 
 /**
@@ -72,7 +71,7 @@ function collect_keys_from_node(node, path, freq_map) {
             freq_map.set(path_key, { count: 1, order: key_count, path: path.slice() });
         }
     }
-    
+
     if (node.children) {
         for (let child of node.children) {
             collect_keys_from_node(child, path, freq_map);
@@ -90,15 +89,15 @@ function calculate_key_frequency_stats(document, max_num_keys) {
         console.log('JSON parsing error in frequency stats:', e.message);
         return [];
     }
-    
+
     // Collect all (key, path) pairs with frequency and first-seen order
-    let freq_map = new Map();    
+    let freq_map = new Map();
     for (let record of records) {
-        // TODO: consider using 'root' as the first element here after making parsing in frequency stats more strict. 
+        // TODO: consider using 'root' as the first element here after making parsing in frequency stats more strict.
         // Using `root` would also allow matching to incremental matches to be more strict if it also adds 'root' for fully parsed records without incomplete parents.
         collect_keys_from_node(record, [], freq_map);
     }
-    
+
     // Convert to array and sort by frequency (desc), then by first-seen order (asc) for ties
     let sorted_pairs = Array.from(freq_map.values())
         .sort((a, b) => {
@@ -107,7 +106,7 @@ function calculate_key_frequency_stats(document, max_num_keys) {
             }
             return a.order - b.order;
         });
-    
+
     // Return top N most frequent (key, path) pairs
     return sorted_pairs.slice(0, max_num_keys).map(item => ({ path: item.path, count: item.count }));
 }
@@ -130,13 +129,48 @@ function get_keys_to_highlight(document) {
 }
 
 
+function push_ambient_tokens_between_positions(document, ambientTokenType, lastPushedPosition, currentPosition, builder) {
+    // Nothing to push if positions are the same or current is before last
+    if (currentPosition.isBeforeOrEqual(lastPushedPosition)) {
+        return;
+    }
+
+    if (lastPushedPosition.line === currentPosition.line) {
+        builder.push(new vscode.Range(lastPushedPosition, currentPosition), ambientTokenType);
+        return;
+    }
+    // Multi-line - push token for remainder of first line
+    let firstLineText = document.lineAt(lastPushedPosition.line).text;
+    if (lastPushedPosition.character < firstLineText.length) {
+        let range = new vscode.Range(lastPushedPosition, new vscode.Position(lastPushedPosition.line, firstLineText.length));
+        builder.push(range, ambientTokenType);
+    }
+
+    // Push tokens for intermediate full lines
+    for (let line = lastPushedPosition.line + 1; line < currentPosition.line; line++) {
+        let lineText = document.lineAt(line).text;
+        if (lineText.length > 0) {
+            let range = new vscode.Range(line, 0, line, lineText.length);
+            builder.push(range, ambientTokenType);
+        }
+    }
+
+    // Push token for beginning of last line
+    if (currentPosition.character > 0) {
+        let range = new vscode.Range(currentPosition.line, 0, currentPosition.line, currentPosition.character);
+        builder.push(range, ambientTokenType);
+    }
+}
+
+
 /**
  * @param {string[]} keys_to_highlight - Array of paths like "foo->bar"
  * @param {vscode.SemanticTokensBuilder} builder
  * @param {json_parse.RainbowJsonNode} node
  * @param {string} path - Current path
+ * @param {vscode.Position} lastPushedPosition
  */
-function push_current_node(keys_to_highlight, builder, node, current_path) {
+function push_current_node(document, keys_to_highlight, builder, node, current_path, lastPushedPosition) {
     let current_path_signature = current_path.slice().reverse().join('->');
     let highlight_index = 0;
     for (highlight_index = 0; highlight_index < keys_to_highlight.length; highlight_index++) {
@@ -145,7 +179,7 @@ function push_current_node(keys_to_highlight, builder, node, current_path) {
         }
     }
     if (highlight_index >= keys_to_highlight.length) {
-        return;
+        return lastPushedPosition;
     }
     let token_type = rainbow_token_types[highlight_index % rainbow_token_types.length];
     let start_line = node.parent_key_position.line;
@@ -157,8 +191,12 @@ function push_current_node(keys_to_highlight, builder, node, current_path) {
         end_line = node.end_position.line;
         end_col = node.end_position.column;
     }
-    let current_range = new vscode.Range(start_line, start_col, end_line, end_col);
+    let current_range_start = new vscode.Position(start_line, start_col);
+    let current_range_end = new vscode.Position(end_line, end_col);
+    push_ambient_tokens_between_positions(document, ambient_token_type, lastPushedPosition, current_range_start, builder);
+    let current_range = new vscode.Range(current_range_start, current_range_end);
     builder.push(current_range, token_type);
+    return current_range_end;
 }
 
 /**
@@ -166,23 +204,25 @@ function push_current_node(keys_to_highlight, builder, node, current_path) {
  * @param {vscode.SemanticTokensBuilder} builder
  * @param {json_parse.RainbowJsonNode} node
  * @param {string} path - Current path
+ * @param {vscode.Position} lastPushedPosition - Start position of the range being processed
  */
-function push_node_tokens(keys_to_highlight, builder, node, path) {
+function push_node_tokens(document, keys_to_highlight, builder, node, path, lastPushedPosition) {
     path = path.slice();
     if (node.parent_key) { // Arrays elements don't have parent_key, so path doesn't change which is exactly what is needed.
         path.push(node.parent_key);
-        push_current_node(keys_to_highlight, builder, node, path);
+        lastPushedPosition = push_current_node(document, keys_to_highlight, builder, node, path, lastPushedPosition);
     }
     for (let child of node.children) {
-        push_node_tokens(keys_to_highlight, builder, child, path);
+        lastPushedPosition = push_node_tokens(document, keys_to_highlight, builder, child, path, lastPushedPosition);
     }
+    return lastPushedPosition;
 }
 
 class RainbowTokenProvider {
     // We don't utilize typescript `implement` interface keyword, because TS doesn't seem to be exporting interfaces to JS (unlike classes).
     constructor() {
     }
-    
+
     /**
      * @param {vscode.TextDocument} document
      * @param {vscode.Range} range
@@ -214,11 +254,13 @@ class RainbowTokenProvider {
         // for (let i = 0; i < line_nums.length; i++) {
         //     builder.push(new vscode.Range(line_nums[i], 0, line_nums[i], lines[i].length), 'rainbow1');
         // }
-        
+        let lastPushedPosition = parsing_range.start;
         for (let record of records) {
-            push_node_tokens(keys_to_highlight, builder, record, []);
+            // FIXME pass extracted lines array instead of document itself or consider not extracting lines in the first place.
+            lastPushedPosition = push_node_tokens(document, keys_to_highlight, builder, record, /*path=*/[], lastPushedPosition);
         }
-        
+        push_ambient_tokens_between_positions(document, ambient_token_type, lastPushedPosition, parsing_range.end, builder);
+
         return builder.build();
     }
 }
