@@ -21,8 +21,7 @@
         ],
         "configurationDefaults": {
           "[json][jsonl]": {
-            "editor.semanticHighlighting.enabled": true,
-            "editor.bracketPairColorization.enabled": false
+            "editor.semanticHighlighting.enabled": true
           }
         },
         "semanticTokenScopes": [

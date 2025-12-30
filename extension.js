@@ -12,8 +12,6 @@ const ambient_token_type = 'rainbow3';
 const all_token_types = rainbow_token_types.concat(['rainbow1']);
 const tokens_legend = new vscode.SemanticTokensLegend(all_token_types);
 
-//TODO try to simplify injection grammars that override and cancel out built-in json syntax.
-
 // TODO adjust extension name and other metadata.
 
 // TODO toggle bracket pair colorization and the default json syntax through API (so it can be toggled on per-file basis) instead of static settings.
@@ -282,7 +280,7 @@ function enable_dynamic_semantic_tokenization() {
 /**
  * @param {vscode.ExtensionContext} context
  */
-function activate(context) {
+async function activate(context) {
 	console.log('Congratulations, your extension "helloworld-minimal-sample" is now active!');
 
 	enable_dynamic_semantic_tokenization();
@@ -290,6 +288,15 @@ function activate(context) {
 		vscode.window.showInformationMessage('Hello World!');
 	});
 
+    for (let language_id of ["json", "jsonl"]) {
+        let config = vscode.workspace.getConfiguration('editor', {languageId: language_id});
+        // Adjusting these settings as `configurationDefaults` in package.json doesn't work reliably, so we set it here dynamically.
+        // TODO consider adjusting on workspace level only instead.
+        let update_global_settings = true;
+        if (config.get('bracketPairColorization.enabled')) {
+            await config.update('bracketPairColorization.enabled', false, /*configurationTarget=*/update_global_settings, /*overrideInLanguage=*/true);
+        }
+    }
 	context.subscriptions.push(disposable);
 }
 
