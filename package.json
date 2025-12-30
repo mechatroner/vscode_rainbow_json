@@ -21,7 +21,8 @@
         ],
         "configurationDefaults": {
           "[json][jsonl]": {
-            "editor.semanticHighlighting.enabled": true
+            "editor.semanticHighlighting.enabled": true,
+            "editor.bracketPairColorization.enabled": false
           }
         },
         "grammars": [
