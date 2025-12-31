@@ -18,9 +18,11 @@ const max_num_keys_to_highlight = rainbow_token_types.length;
 
 // TODO adjust extension name and other metadata.
 
-// TODO toggle bracket pair colorization and the default json syntax through API (so it can be toggled on per-file basis) instead of static settings.
-
 // TODO improve logging, make it production ready.
+// TODO add readme and changelog
+// TODO add icon.
+
+// TODO (post MVP): add option to highlight by last key path only.
 
 /**
  * @param {typeof vscode} vscode
@@ -116,7 +118,6 @@ function calculate_key_frequency_stats(document, max_num_keys) {
 
 
 function get_keys_to_highlight(document) {
-    // TODO allow user to manually select the keys via context menu.
     if (!document.fileName) {
         return [];
     }
