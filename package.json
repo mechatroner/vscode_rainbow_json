@@ -1,6 +1,7 @@
 {
-    "name": "helloworld-minimal-sample",
-    "description": "Minimal HelloWorld example for VS Code",
+    "name": "rainbow-json",
+    "displayName": "Rainbow JSON",
+    "description": "Highlight JSON keys with rainbow colors for better readability.",
     "version": "0.0.1",
     "publisher": "vscode-samples",
     "repository": "https://github.com/Microsoft/vscode-extension-samples/helloworld-minimal-sample",
@@ -15,8 +16,12 @@
     "contributes": {
         "commands": [
             {
-                "command": "extension.helloWorld",
-                "title": "Hello World"
+                "command": "rainbow-json.Enable",
+                "title": "Rainbow JSON: Enable Highlighting"
+            },
+            {
+                "command": "rainbow-json.Disable",
+                "title": "Rainbow JSON: Disable Highlighting"
             }
         ],
         "configurationDefaults": {

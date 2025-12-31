@@ -16,6 +16,7 @@ const tokens_legend = new vscode.SemanticTokensLegend(all_token_types);
 
 // TODO toggle bracket pair colorization and the default json syntax through API (so it can be toggled on per-file basis) instead of static settings.
 
+// TODO improve logging, make it production ready.
 
 /**
  * @param {typeof vscode} vscode
@@ -39,13 +40,13 @@ function extend_range_by_margin(vscode, doc, range, margin) {
  */
 function parse_document_range(vscode, doc, range) {
     let lines = [];
-	let line_nums = [];
+    let line_nums = [];
     let begin_line = Math.max(0, range.start.line);
     let end_line = Math.min(doc.lineCount, range.end.line + 1);
     for (let lnum = begin_line; lnum < end_line; lnum++) {
         let line_text = doc.lineAt(lnum).text;
-		lines.push(line_text);
-		line_nums.push(lnum);
+        lines.push(line_text);
+        line_nums.push(lnum);
     }
     return [lines, line_nums];
 }
@@ -228,10 +229,10 @@ class RainbowTokenProvider {
      */
     async provideDocumentRangeSemanticTokens(document, range, _token) {
         // TODO re-evaluate error-handling strategy to make sure it is sensible.
-		console.log('providing tokens');
-		if (document.languageId != "json" && document.languageId != "jsonl") {
-			return null;
-		}
+        console.log('providing tokens');
+        if (document.languageId != "json" && document.languageId != "jsonl") {
+            return null;
+        }
         let keys_to_highlight = get_keys_to_highlight(document);
 
         let parsing_range = extend_range_by_margin(vscode, document, range, 100);
@@ -247,11 +248,6 @@ class RainbowTokenProvider {
         }
         console.log(`Parsed ${records.length} JSON records`);
         const builder = new vscode.SemanticTokensBuilder(tokens_legend);
-
-        // This doesn't work at all with `rainbow1` and works too well with other rainbow colors (everything is of the same color).
-        // for (let i = 0; i < line_nums.length; i++) {
-        //     builder.push(new vscode.Range(line_nums[i], 0, line_nums[i], lines[i].length), 'rainbow1');
-        // }
         let lastPushedPosition = parsing_range.start;
         for (let record of records) {
             // FIXME pass extracted lines array instead of document itself or consider not extracting lines in the first place.
@@ -267,13 +263,23 @@ class RainbowTokenProvider {
 function enable_dynamic_semantic_tokenization() {
     // Some themes can disable semantic highlighting e.g. "Tokyo Night" https://marketplace.visualstudio.com/items?itemName=enkia.tokyo-night, so we explicitly override the default setting in "configurationDefaults" section of package.json.
     // Conflict with some other extensions might also cause semantic highlighting to completely fail (although this could be caused by the theme issue described above), see https://github.com/mechatroner/vscode_rainbow_csv/issues/149.
+    console.log('Enabling dynamic semantic tokenization');
     let token_provider = new RainbowTokenProvider();
     if (rainbow_token_event !== null) {
         rainbow_token_event.dispose();
     }
-	// TODO handle jsonc - needs parser adjustment. Also add jsonc to "configurationDefaults":"editor.semanticHighlighting.enabled" list.
+    // TODO handle jsonc - needs parser adjustment. Also add jsonc to "configurationDefaults":"editor.semanticHighlighting.enabled" list.
     let document_selector = [{ language: "json" }, { language: "jsonl" }];
     rainbow_token_event = vscode.languages.registerDocumentRangeSemanticTokensProvider(document_selector, token_provider, tokens_legend);
+    console.log('Dynamic semantic tokenization enabled');
+}
+
+function disable_dynamic_semantic_tokenization() {
+    console.log('Disabling dynamic semantic tokenization');
+    if (rainbow_token_event !== null) {
+        rainbow_token_event.dispose();
+        rainbow_token_event = null;
+    }
 }
 
 
@@ -281,29 +287,35 @@ function enable_dynamic_semantic_tokenization() {
  * @param {vscode.ExtensionContext} context
  */
 async function activate(context) {
-	console.log('Congratulations, your extension "helloworld-minimal-sample" is now active!');
+    console.log('Activating Rainbow JSON');
 
-	enable_dynamic_semantic_tokenization();
-	let disposable = vscode.commands.registerCommand('extension.helloWorld', () => {
-		vscode.window.showInformationMessage('Hello World!');
-	});
+    enable_dynamic_semantic_tokenization();
+    let enable_disposable = vscode.commands.registerCommand('rainbow-json.Enable', () => {
+        enable_dynamic_semantic_tokenization();
+    });
+    let disable_disposable = vscode.commands.registerCommand('rainbow-json.Disable', () => {
+        disable_dynamic_semantic_tokenization();
+    });
 
-    for (let language_id of ["json", "jsonl"]) {
-        let config = vscode.workspace.getConfiguration('editor', {languageId: language_id});
-        // Adjusting these settings as `configurationDefaults` in package.json doesn't work reliably, so we set it here dynamically.
-        // TODO consider adjusting on workspace level only instead.
-        let update_global_settings = true;
-        if (config.get('bracketPairColorization.enabled')) {
-            await config.update('bracketPairColorization.enabled', false, /*configurationTarget=*/update_global_settings, /*overrideInLanguage=*/true);
-        }
-    }
-	context.subscriptions.push(disposable);
+    // TODO: enable this post-MVP. Or figure out if you can use decorations to hide the bracket colors.
+    // for (let language_id of ["json", "jsonl"]) {
+    //     let config = vscode.workspace.getConfiguration('editor', {languageId: language_id});
+    //     // Adjusting these settings as `configurationDefaults` in package.json doesn't work reliably, so we set it here dynamically.
+    //     // TODO consider adjusting on workspace level only instead.
+    //     let update_global_settings = true;
+    //     if (config.get('bracketPairColorization.enabled')) {
+    //         await config.update('bracketPairColorization.enabled', false, /*configurationTarget=*/update_global_settings, /*overrideInLanguage=*/true);
+    //     }
+    // }
+
+    context.subscriptions.push(enable_disposable);
+    context.subscriptions.push(disable_disposable);
 }
 
 function deactivate() {}
 
 // eslint-disable-next-line no-undef
 module.exports = {
-	activate,
-	deactivate
+    activate,
+    deactivate
 }
