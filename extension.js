@@ -4,7 +4,7 @@ const json_parse = require('./json_parse')
 /** @type {vscode.Disposable|null} */
 let rainbow_token_event = null;
 
-let per_doc_key_frequency_stats = new Map(); // Per-file cached results of most frequent keys for auto-highlight.
+let per_doc_reversed_keys_to_highlight = new Map(); // Stores per-doc reversed (leaf->root instead of root->leaf) key paths to highlight.
 
 // Start with rainbow2 because rainbow1 has no color.
 const rainbow_token_types = [/*'rainbow1', */'rainbow2', 'rainbow4', 'rainbow10', 'rainbow9', 'rainbow7', 'rainbow8', 'rainbow5', 'rainbow6', 'rainbow3'];
@@ -115,16 +115,18 @@ function get_keys_to_highlight(document) {
     if (!document.fileName) {
         return [];
     }
-    if (!per_doc_key_frequency_stats.has(document.fileName)) {
-        per_doc_key_frequency_stats.set(document.fileName, calculate_key_frequency_stats(document, /*max_num_keys=*/5));
+    if (!per_doc_reversed_keys_to_highlight.has(document.fileName)) {
+        let frequency_stats = calculate_key_frequency_stats(document, /*max_num_keys=*/5);
+        let keys_to_highlight = frequency_stats.map(stat => stat.path.slice().reverse());
+        per_doc_reversed_keys_to_highlight.set(document.fileName, keys_to_highlight);
     }
-    let key_frequency_stats = per_doc_key_frequency_stats.get(document.fileName);
-    if (!key_frequency_stats || !key_frequency_stats.length) {
-        console.log('Key frequency stats empty. Returning.');
+    let keys_to_highlight = per_doc_reversed_keys_to_highlight.get(document.fileName);
+    if (!keys_to_highlight || !keys_to_highlight.length) {
+        console.log('Keys to highlight empty. Returning.');
         return [];
     }
     // Reverse from root -> leaf to leaf -> root so that we can do prefix matching more naturally.
-    return key_frequency_stats.map(stat => stat.path.slice().reverse().join('->'));
+    return keys_to_highlight.map(path => path.join('->'));
 }
 
 
