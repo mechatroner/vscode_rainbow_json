@@ -181,11 +181,11 @@ function tokenize_json_line(line, line_num=null) {
 class Position {
     /**
      * @param {number} line
-     * @param {number} column
+     * @param {number} character
      */
-    constructor(line, column) {
+    constructor(line, character) {
         this.line = line;
-        this.column = column;
+        this.character = character;
     }
 }
 
@@ -197,6 +197,20 @@ class Range {
     constructor(start_position, end_position) {
         this.start_position = start_position;
         this.end_position = end_position;
+    }
+
+    // TODO add unit tests.
+    contains(position) {
+        if (position.line < this.start_position.line || position.line > this.end_position.line) {
+            return false;
+        }
+        if (position.line === this.start_position.line && position.character < this.start_position.character) {
+            return false;
+        }
+        if (position.line === this.end_position.line && position.character > this.end_position.character) {
+            return false;
+        }
+        return true;
     }
 }
 
@@ -231,6 +245,20 @@ class RainbowJsonNode {
         this.children = []; // For container nodes.
         this.value = null; // For scalar nodes.
         this.relative_depth = null; // Only set for root nodes.
+    }
+
+    getValueRange() {
+        if (this.start_position === null || this.end_position === null) {
+            return null;
+        }
+        return new Range(this.start_position, this.end_position);
+    }
+
+    getParentKeyRange() {
+        if (this.parent_key_position === null || this.parent_key === null) {
+            return null;
+        }
+        return new Range(this.parent_key_position, new Position(this.parent_key_position.line, this.parent_key_position.character + this.parent_key.length));
     }
 }
 

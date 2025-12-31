@@ -6,11 +6,15 @@ let rainbow_token_event = null;
 
 let per_doc_reversed_keys_to_highlight = new Map(); // Stores per-doc reversed (leaf->root instead of root->leaf) key paths to highlight.
 
+
+
 // Start with rainbow2 because rainbow1 has no color.
-const rainbow_token_types = [/*'rainbow1', */'rainbow2', 'rainbow4', 'rainbow10', 'rainbow9', 'rainbow7', 'rainbow8', 'rainbow5', 'rainbow6', 'rainbow3'];
+const rainbow_token_types = [/*'rainbow1', */'rainbow2', 'rainbow4', 'rainbow10', 'rainbow9', 'rainbow7', 'rainbow8', 'rainbow5', 'rainbow6'/*, 'rainbow3'*/];
 const ambient_token_type = 'rainbow3';
-const all_token_types = rainbow_token_types.concat(['rainbow1']);
+const all_token_types = rainbow_token_types.concat(['rainbow1', ambient_token_type]);
 const tokens_legend = new vscode.SemanticTokensLegend(all_token_types);
+
+const max_num_keys_to_highlight = rainbow_token_types.length;
 
 // TODO adjust extension name and other metadata.
 
@@ -110,6 +114,7 @@ function calculate_key_frequency_stats(document, max_num_keys) {
     return sorted_pairs.slice(0, max_num_keys).map(item => ({ path: item.path, count: item.count }));
 }
 
+
 function get_keys_to_highlight(document) {
     // TODO allow user to manually select the keys via context menu.
     if (!document.fileName) {
@@ -185,12 +190,12 @@ function push_current_node(document, keys_to_highlight, builder, node, current_p
     let token_type = rainbow_token_types[highlight_index % rainbow_token_types.length];
     let start_line = node.parent_key_position.line;
     let end_line = start_line;
-    let start_col = node.parent_key_position.column;
+    let start_col = node.parent_key_position.character;
     let end_col = start_col + node.parent_key.length;
     if (node.node_type === 'SCALAR' && node.value !== null) {
         // For scalar nodes highlight the whole key-value pair.
         end_line = node.end_position.line;
-        end_col = node.end_position.column;
+        end_col = node.end_position.character;
     }
     let current_range_start = new vscode.Position(start_line, start_col);
     let current_range_end = new vscode.Position(end_line, end_col);
@@ -286,6 +291,114 @@ function disable_dynamic_semantic_tokenization() {
 
 
 /**
+ * Find the key path at a given position in the document
+ * @param {json_parse.RainbowJsonNode} node
+ * @param {vscode.Position} position
+ * @param {string[]} current_path
+ * @returns {string[]|null} - The path to the key at position, or null if not found
+ */
+function find_key_path_at_position(node, position, current_path) {
+    current_path = current_path.slice();
+    if (node.parent_key) {
+        current_path.push(node.parent_key);
+        let parent_key_range = node.getParentKeyRange();
+        if (parent_key_range && parent_key_range.contains(position)) {
+            return current_path;
+        }
+        
+        // For scalar nodes, also check if position is within the value
+        if (node.node_type === 'SCALAR') {
+            let scalar_range = node.getValueRange();
+            if (scalar_range && scalar_range.contains(position)) {
+                return current_path;
+            }
+        }
+    }
+    
+    // Recursively check children
+    for (let child of node.children) {
+        let result = find_key_path_at_position(child, position, current_path);
+        if (result) {
+            return result;
+        }
+    }
+    
+    return null;
+}
+
+/**
+ * Find key path at cursor position in the document
+ * @param {vscode.TextDocument} document
+ * @param {vscode.Position} position
+ * @returns {string[]|null}
+ */
+function get_key_path_at_cursor(document, position) {
+    let [lines, line_nums] = parse_document_range(vscode, document, new vscode.Range(0, 0, document.lineCount, 0));
+    let records;
+    try {
+        records = json_parse.parse_json_objects(lines, line_nums);
+    } catch (e) {
+        console.log('JSON parsing error:', e.message);
+        return null;
+    }
+    
+    for (let record of records) {
+        let path = find_key_path_at_position(record, position, []);
+        if (path) {
+            return path;
+        }
+    }
+    return null;
+}
+
+/**
+ * Toggle a key path in the highlight list for a document
+ * @param {vscode.TextDocument} document
+ * @param {string[]} key_path - Path in root->leaf order
+ */
+function toggle_key_highlight(document, key_path) {
+    if (!document.fileName) {
+        vscode.window.showErrorMessage('Cannot toggle highlight: document has no file name');
+        return;
+    }
+    
+    let reversed_path = key_path.slice().reverse();
+    
+    if (!per_doc_reversed_keys_to_highlight.has(document.fileName)) {
+        per_doc_reversed_keys_to_highlight.set(document.fileName, []);
+    }
+    
+    let keys_list = per_doc_reversed_keys_to_highlight.get(document.fileName);
+    let path_signature = reversed_path.join('->');
+    
+    // Check if path already exists
+    let existing_index = keys_list.findIndex(existing => existing.join('->') === path_signature);
+    
+    if (existing_index !== -1) {
+        // FIXME we should replace value with null instead of removing it in order to preserve color mapping for other keys.
+        // Remove from list
+        keys_list.splice(existing_index, 1);
+        vscode.window.showInformationMessage(`Removed highlight for key: ${key_path.join('->')}`);
+    } else {
+        // Check max limit
+        if (keys_list.length >= max_num_keys_to_highlight) {
+            vscode.window.showErrorMessage(`Too many keys selected (max ${max_num_keys_to_highlight}). Remove some keys first.`);
+            return;
+        }
+        // Add to list
+        keys_list.push(reversed_path);
+        vscode.window.showInformationMessage(`Added highlight for key: ${key_path.join('->')}`);
+    }
+    
+    // Trigger re-tokenization by refreshing semantic tokens
+    // This is done by re-registering the provider which forces a refresh
+    if (rainbow_token_event !== null) {
+        enable_dynamic_semantic_tokenization();
+    }
+}
+
+
+/**
  * @param {vscode.ExtensionContext} context
  */
 async function activate(context) {
@@ -297,6 +410,25 @@ async function activate(context) {
     });
     let disable_disposable = vscode.commands.registerCommand('rainbow-json.Disable', () => {
         disable_dynamic_semantic_tokenization();
+    });
+    let toggle_key_disposable = vscode.commands.registerCommand('rainbow-json.ToggleKeyHighlight', () => {
+        let editor = vscode.window.activeTextEditor;
+        if (!editor) {
+            vscode.window.showErrorMessage('No active editor');
+            return;
+        }
+        let document = editor.document;
+        if (document.languageId !== 'json' && document.languageId !== 'jsonl') {
+            vscode.window.showErrorMessage('Not a JSON file');
+            return;
+        }
+        let position = editor.selection.active;
+        let key_path = get_key_path_at_cursor(document, position);
+        if (!key_path || key_path.length === 0) {
+            vscode.window.showErrorMessage('No JSON key found at cursor position');
+            return;
+        }
+        toggle_key_highlight(document, key_path);
     });
 
     // TODO: enable this post-MVP. Or figure out if you can use decorations to hide the bracket colors.
@@ -312,6 +444,7 @@ async function activate(context) {
 
     context.subscriptions.push(enable_disposable);
     context.subscriptions.push(disable_disposable);
+    context.subscriptions.push(toggle_key_disposable);
 }
 
 function deactivate() {}

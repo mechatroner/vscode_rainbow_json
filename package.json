@@ -24,6 +24,11 @@
                 "command": "rainbow-json.Disable",
                 "category": "Rainbow JSON",
                 "title": "Disable Highlighting"
+            },
+            {
+                "command": "rainbow-json.ToggleKeyHighlight",
+                "category": "Rainbow JSON",
+                "title": "Toggle Key Highlight"
             }
         ],
         "submenus": [
@@ -47,6 +52,10 @@
                 },
                 {
                     "command": "rainbow-json.Disable",
+                    "group": "navigation"
+                },
+                {
+                    "command": "rainbow-json.ToggleKeyHighlight",
                     "group": "navigation"
                 }
             ]
