@@ -17,13 +17,40 @@
         "commands": [
             {
                 "command": "rainbow-json.Enable",
-                "title": "Rainbow JSON: Enable Highlighting"
+                "category": "Rainbow JSON",
+                "title": "Enable Highlighting"
             },
             {
                 "command": "rainbow-json.Disable",
-                "title": "Rainbow JSON: Disable Highlighting"
+                "category": "Rainbow JSON",
+                "title": "Disable Highlighting"
             }
         ],
+        "submenus": [
+            {
+                "id": "rainbow-json.submenu",
+                "label": "Rainbow JSON"
+            }
+        ],
+        "menus": {
+            "editor/context": [
+                {
+                    "submenu": "rainbow-json.submenu",
+                    "group": "rainbow-json",
+                    "when": "resourceLangId == json || resourceLangId == jsonl"
+                }
+            ],
+            "rainbow-json.submenu": [
+                {
+                    "command": "rainbow-json.Enable",
+                    "group": "navigation"
+                },
+                {
+                    "command": "rainbow-json.Disable",
+                    "group": "navigation"
+                }
+            ]
+        },
         "configurationDefaults": {
           "[json][jsonl]": {
             "editor.semanticHighlighting.enabled": true
