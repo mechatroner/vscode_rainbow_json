@@ -19,6 +19,9 @@ const max_num_keys_to_highlight = rainbow_token_types.length;
 // TODO improve logging, make it production ready.
 // TODO add proper readme
 // TODO add icon and update metadata
+// TODO fix consistent coloring when unselecting a key.
+
+
 
 // TODO (post MVP): add option to highlight by last key path only.
 
@@ -56,6 +59,11 @@ function parse_document_range(vscode, doc, range) {
 }
 
 
+function get_path_signature(path) {
+    return path ? path.join('->') : null;
+}
+
+
 /**
  * Recursively collects all (key, path) pairs from a node
  * @param {json_parse.RainbowJsonNode} node
@@ -66,7 +74,7 @@ function collect_keys_from_node(node, path, freq_map) {
     path = path.slice();
     if (node.parent_key) { // Array elements don't have parent keys.
         path.push(node.parent_key);
-        let path_key = path.join('->');
+        let path_key = get_path_signature(path);
         if (freq_map.has(path_key)) {
             freq_map.get(path_key).count++;
         } else {
@@ -130,7 +138,7 @@ function get_keys_to_highlight(document) {
         return [];
     }
     // Reverse from root -> leaf to leaf -> root so that we can do prefix matching more naturally.
-    return keys_to_highlight.map(path => path.join('->'));
+    return keys_to_highlight.map(path => get_path_signature(path));
 }
 
 
@@ -176,10 +184,10 @@ function push_ambient_tokens_between_positions(document, ambientTokenType, lastP
  * @param {vscode.Position} lastPushedPosition
  */
 function push_current_node(document, keys_to_highlight, builder, node, current_path, lastPushedPosition) {
-    let current_path_signature = current_path.slice().reverse().join('->');
+    let current_path_signature = get_path_signature(current_path.slice().reverse());
     let highlight_index = 0;
     for (highlight_index = 0; highlight_index < keys_to_highlight.length; highlight_index++) {
-        if (keys_to_highlight[highlight_index].startsWith(current_path_signature)) {
+        if (keys_to_highlight[highlight_index] && keys_to_highlight[highlight_index].startsWith(current_path_signature)) {
             break;
         }
     }
@@ -256,7 +264,7 @@ class RainbowTokenProvider {
         const builder = new vscode.SemanticTokensBuilder(tokens_legend);
         let lastPushedPosition = parsing_range.start;
         for (let record of records) {
-            // FIXME pass extracted lines array instead of document itself or consider not extracting lines in the first place.
+            // TODO consider passing extracted lines array instead of document itself or consider not extracting lines in the first place.
             lastPushedPosition = push_node_tokens(document, keys_to_highlight, builder, record, /*path=*/[], lastPushedPosition);
         }
         push_ambient_tokens_between_positions(document, ambient_token_type, lastPushedPosition, parsing_range.end, builder);
@@ -368,25 +376,32 @@ function toggle_key_highlight(document, key_path) {
     }
     
     let keys_list = per_doc_reversed_keys_to_highlight.get(document.fileName);
-    let path_signature = reversed_path.join('->');
+    let target_key_path_signature = get_path_signature(reversed_path);
     
     // Check if path already exists
-    let existing_index = keys_list.findIndex(existing => existing.join('->') === path_signature);
+    let existing_index = keys_list.findIndex(existing => get_path_signature(existing) === target_key_path_signature);
     
     if (existing_index !== -1) {
-        // FIXME we should replace value with null instead of removing it in order to preserve color mapping for other keys.
-        // Remove from list
-        keys_list.splice(existing_index, 1);
-        vscode.window.showInformationMessage(`Removed highlight for key: ${key_path.join('->')}`);
+        // Remove key by replacing it with null instead of removing from the list - this preserves consistency of color mapping for other keys.
+        keys_list[existing_index] = null;
+        console.log(`Removed highlight for key: ${get_path_signature(key_path)}`);
     } else {
-        // Check max limit
-        if (keys_list.length >= max_num_keys_to_highlight) {
+        let first_null_index = 0;
+        while (first_null_index < keys_list.length) {
+            if (keys_list[first_null_index] === null) {
+                break;
+            }
+            first_null_index += 1;
+        }
+        if (first_null_index < keys_list.length) {
+            keys_list[first_null_index] = reversed_path;
+        } else if (first_null_index >= max_num_keys_to_highlight) {
             vscode.window.showErrorMessage(`Too many keys selected (max ${max_num_keys_to_highlight}). Remove some keys first.`);
             return;
+        } else {
+            keys_list.push(reversed_path);
         }
-        // Add to list
-        keys_list.push(reversed_path);
-        vscode.window.showInformationMessage(`Added highlight for key: ${key_path.join('->')}`);
+        console.log(`Added highlight for key: ${get_path_signature(key_path)}`);
     }
     
     // Trigger re-tokenization by refreshing semantic tokens
