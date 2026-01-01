@@ -16,11 +16,9 @@ const tokens_legend = new vscode.SemanticTokensLegend(all_token_types);
 
 const max_num_keys_to_highlight = rainbow_token_types.length;
 
-// TODO adjust extension name and other metadata.
-
 // TODO improve logging, make it production ready.
-// TODO add readme and changelog
-// TODO add icon.
+// TODO add proper readme
+// TODO add icon and update metadata
 
 // TODO (post MVP): add option to highlight by last key path only.
 
