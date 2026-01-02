@@ -9,7 +9,7 @@ let per_doc_reversed_keys_to_highlight = new Map(); // Stores per-doc reversed (
 
 
 // Start with rainbow2 because rainbow1 has no color.
-const rainbow_token_types = [/*'rainbow1', */'rainbow2', 'rainbow4', 'rainbow10', 'rainbow9', 'rainbow7', 'rainbow8', 'rainbow5', 'rainbow6'/*, 'rainbow3'*/];
+const rainbow_token_types = [/*'rainbow1', */'rainbow2', 'rainbow4', 'rainbow10', 'rainbow8', 'rainbow5', 'rainbow6', 'rainbow9', 'rainbow7'/*, 'rainbow3'*/];
 const ambient_token_type = 'rainbow3';
 const all_token_types = rainbow_token_types.concat(['rainbow1', ambient_token_type]);
 const tokens_legend = new vscode.SemanticTokensLegend(all_token_types);
