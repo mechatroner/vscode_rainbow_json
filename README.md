@@ -1,6 +1,6 @@
 # Rainbow JSON
 
-Highlight JSON keys with rainbow colors to improve readability in JSON dataset files. 
+Highlight repeating keys in JSON datasets in different colors for better readability. 
 
 
 ![screenshot](https://private-user-images.githubusercontent.com/5349737/531391843-0b99a50b-a398-4015-a907-fc3291d6f9a9.png)

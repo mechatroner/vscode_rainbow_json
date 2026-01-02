@@ -1,5 +1,6 @@
 const vscode = require('vscode');
 const json_parse = require('./json_parse')
+const rainbow_utils = require('./rainbow_utils');
 
 /** @type {vscode.Disposable|null} */
 let rainbow_token_event = null;
@@ -18,7 +19,8 @@ const max_num_keys_to_highlight = rainbow_token_types.length;
 
 // TODO add proper readme with a screenshot.
 // TODO improve unit tests
-// TODO do not start highlighting if initial JSON validation for the file fails.
+// TODO add min autodetection frequency config option to highlight e.g. 2, to avoid highlighting configs.
+// TODO add min number of keys with the min frequency e.g. 2, so we would have 2 x 2 table at least.
 
 // TODO (post MVP): add option to highlight by last key path only.
 // TODO (post MVP): use vscode channel for logging like in rainbow csv instead of console.log
@@ -56,76 +58,13 @@ function parse_document_range(vscode, doc, range) {
     return [lines, line_nums];
 }
 
-
-function get_path_signature(path) {
-    return path ? path.join('->') : null;
-}
-
-
-/**
- * Recursively collects all (key, path) pairs from a node
- * @param {json_parse.RainbowJsonNode} node
- * @param {string[]} path - Current path like ["root", "foo", "bar"]
- * @param {Map<string, {count: number, order: number, name: string, path: string}>} freq_map
- */
-function collect_keys_from_node(node, path, freq_map) {
-    path = path.slice();
-    if (node.parent_key) { // Array elements don't have parent keys.
-        path.push(node.parent_key);
-        let path_key = get_path_signature(path);
-        if (freq_map.has(path_key)) {
-            freq_map.get(path_key).count++;
-        } else {
-            let key_count = freq_map.size;
-            freq_map.set(path_key, { count: 1, order: key_count, path: path.slice() });
-        }
-    }
-
-    if (node.children) {
-        for (let child of node.children) {
-            collect_keys_from_node(child, path, freq_map);
-        }
-    }
-}
-
-function calculate_key_frequency_stats(document, max_num_keys) {
-    let [lines, line_nums] = parse_document_range(vscode, document, new vscode.Range(0, 0, document.lineCount, 0));
-    let records = [];
-    try {
-        // TODO in stats calculation we can do less robust error handling than in incremental parsing to ensure that we can use 'root' as the first path element.
-        records = json_parse.parse_json_objects(lines, line_nums);
-    } catch (e) {
-        return [];
-    }
-
-    // Collect all (key, path) pairs with frequency and first-seen order
-    let freq_map = new Map();
-    for (let record of records) {
-        // TODO: consider using 'root' as the first element here after making parsing in frequency stats more strict.
-        // Using `root` would also allow matching to incremental matches to be more strict if it also adds 'root' for fully parsed records without incomplete parents.
-        collect_keys_from_node(record, [], freq_map);
-    }
-
-    // Convert to array and sort by frequency (desc), then by first-seen order (asc) for ties
-    let sorted_pairs = Array.from(freq_map.values())
-        .sort((a, b) => {
-            if (b.count !== a.count) {
-                return b.count - a.count;
-            }
-            return a.order - b.order;
-        });
-
-    // Return top N most frequent (key, path) pairs
-    return sorted_pairs.slice(0, max_num_keys).map(item => ({ path: item.path, count: item.count }));
-}
-
-
 function get_keys_to_highlight(document) {
     if (!document.fileName) {
         return [];
     }
     if (!per_doc_reversed_keys_to_highlight.has(document.fileName)) {
-        let frequency_stats = calculate_key_frequency_stats(document, /*max_num_keys=*/5);
+        let [lines, line_nums] = parse_document_range(vscode, document, new vscode.Range(0, 0, document.lineCount, 0));
+        let frequency_stats = rainbow_utils.calculate_key_frequency_stats(lines, line_nums, /*max_num_keys=*/5);
         let keys_to_highlight = frequency_stats.map(stat => stat.path.slice().reverse());
         per_doc_reversed_keys_to_highlight.set(document.fileName, keys_to_highlight);
     }
@@ -134,7 +73,7 @@ function get_keys_to_highlight(document) {
         return [];
     }
     // Reverse from root -> leaf to leaf -> root so that we can do prefix matching more naturally.
-    return keys_to_highlight.map(path => get_path_signature(path));
+    return keys_to_highlight.map(path => rainbow_utils.get_path_signature(path));
 }
 
 
@@ -180,7 +119,7 @@ function push_ambient_tokens_between_positions(document, ambientTokenType, lastP
  * @param {vscode.Position} lastPushedPosition
  */
 function push_current_node(document, keys_to_highlight, builder, node, current_path, lastPushedPosition) {
-    let current_path_signature = get_path_signature(current_path.slice().reverse());
+    let current_path_signature = rainbow_utils.get_path_signature(current_path.slice().reverse());
     let highlight_index = 0;
     for (highlight_index = 0; highlight_index < keys_to_highlight.length; highlight_index++) {
         if (keys_to_highlight[highlight_index] && keys_to_highlight[highlight_index].startsWith(current_path_signature)) {
@@ -375,15 +314,15 @@ function toggle_key_highlight(document, key_path) {
     }
 
     let keys_list = per_doc_reversed_keys_to_highlight.get(document.fileName);
-    let target_key_path_signature = get_path_signature(reversed_path);
+    let target_key_path_signature = rainbow_utils.get_path_signature(reversed_path);
 
     // Check if path already exists
-    let existing_index = keys_list.findIndex(existing => get_path_signature(existing) === target_key_path_signature);
+    let existing_index = keys_list.findIndex(existing => rainbow_utils.get_path_signature(existing) === target_key_path_signature);
 
     if (existing_index !== -1) {
         // Remove key by replacing it with null instead of removing from the list - this preserves consistency of color mapping for other keys.
         keys_list[existing_index] = null;
-        console.log(`Removed highlight for key: ${get_path_signature(key_path)}`);
+        console.log(`Removed highlight for key: ${rainbow_utils.get_path_signature(key_path)}`);
     } else {
         let first_null_index = 0;
         while (first_null_index < keys_list.length) {
@@ -400,7 +339,7 @@ function toggle_key_highlight(document, key_path) {
         } else {
             keys_list.push(reversed_path);
         }
-        console.log(`Added highlight for key: ${get_path_signature(key_path)}`);
+        console.log(`Added highlight for key: ${rainbow_utils.get_path_signature(key_path)}`);
     }
 
     // Trigger re-tokenization by refreshing semantic tokens
