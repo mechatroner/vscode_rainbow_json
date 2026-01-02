@@ -1,7 +1,7 @@
 {
     "name": "rainbow-json",
     "displayName": "Rainbow JSON",
-    "description": "Highlight JSON keys with rainbow colors for better readability.",
+    "description": "Highlight keys in JSON datasets in different colors for better readability.",
     "version": "0.0.1",
     "publisher": "mechatroner",
     "license": "MIT",

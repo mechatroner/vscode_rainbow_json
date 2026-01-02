@@ -621,8 +621,6 @@ function group_tokens_into_full_object_groups(tokens) {
  * @throws {JsonTokenizerError|JsonSyntaxError}
  */
 function parse_json_objects(lines, line_nums) {
-    // Using first unindented container line to start parsing is a hack, but it should probably work OK in practice.
-    // This can be fixed later.
     // TODO we can probably do all 3 steps in a single pass. Or at least do them in 2 steps.
     let tokens = [];
     for (let i = 0; i < lines.length; i++) {

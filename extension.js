@@ -90,12 +90,11 @@ function collect_keys_from_node(node, path, freq_map) {
 
 function calculate_key_frequency_stats(document, max_num_keys) {
     let [lines, line_nums] = parse_document_range(vscode, document, new vscode.Range(0, 0, document.lineCount, 0));
-    let records;
+    let records = [];
     try {
         // TODO in stats calculation we can do less robust error handling than in incremental parsing to ensure that we can use 'root' as the first path element.
         records = json_parse.parse_json_objects(lines, line_nums);
     } catch (e) {
-        console.log('JSON parsing error in frequency stats:', e.message);
         return [];
     }
 
@@ -245,6 +244,14 @@ class RainbowTokenProvider {
         }
         let keys_to_highlight = get_keys_to_highlight(document);
 
+        const builder = new vscode.SemanticTokensBuilder(tokens_legend);
+
+        // Early return if no non-null keys to highlight
+        if (!keys_to_highlight.length || keys_to_highlight.every(k => k === null)) {
+            console.log('No keys to highlight found.');
+            return builder.build();
+        }
+
         let parsing_range = extend_range_by_margin(vscode, document, range, 100);
         let [lines, line_nums] = parse_document_range(vscode, document, parsing_range);
         let records;
@@ -252,9 +259,8 @@ class RainbowTokenProvider {
             records = json_parse.parse_json_objects(lines, line_nums);
         } catch (e) {
             // If parsing fails, return empty tokens
-            return null;
+            return builder.build();
         }
-        const builder = new vscode.SemanticTokensBuilder(tokens_legend);
         let lastPushedPosition = parsing_range.start;
         for (let record of records) {
             // TODO consider passing extracted lines array instead of document itself or consider not extracting lines in the first place.
@@ -305,7 +311,7 @@ function find_key_path_at_position(node, position, current_path) {
         if (parent_key_range && parent_key_range.contains(position)) {
             return current_path;
         }
-        
+
         // For scalar nodes, also check if position is within the value
         if (node.node_type === 'SCALAR') {
             let scalar_range = node.getValueRange();
@@ -314,7 +320,7 @@ function find_key_path_at_position(node, position, current_path) {
             }
         }
     }
-    
+
     // Recursively check children
     for (let child of node.children) {
         let result = find_key_path_at_position(child, position, current_path);
@@ -322,7 +328,7 @@ function find_key_path_at_position(node, position, current_path) {
             return result;
         }
     }
-    
+
     return null;
 }
 
@@ -341,7 +347,7 @@ function get_key_path_at_cursor(document, position) {
         console.log('JSON parsing error:', e.message);
         return null;
     }
-    
+
     for (let record of records) {
         let path = find_key_path_at_position(record, position, []);
         if (path) {
@@ -361,19 +367,19 @@ function toggle_key_highlight(document, key_path) {
         vscode.window.showErrorMessage('Cannot toggle highlight: document has no file name');
         return;
     }
-    
+
     let reversed_path = key_path.slice().reverse();
-    
+
     if (!per_doc_reversed_keys_to_highlight.has(document.fileName)) {
         per_doc_reversed_keys_to_highlight.set(document.fileName, []);
     }
-    
+
     let keys_list = per_doc_reversed_keys_to_highlight.get(document.fileName);
     let target_key_path_signature = get_path_signature(reversed_path);
-    
+
     // Check if path already exists
     let existing_index = keys_list.findIndex(existing => get_path_signature(existing) === target_key_path_signature);
-    
+
     if (existing_index !== -1) {
         // Remove key by replacing it with null instead of removing from the list - this preserves consistency of color mapping for other keys.
         keys_list[existing_index] = null;
@@ -396,12 +402,10 @@ function toggle_key_highlight(document, key_path) {
         }
         console.log(`Added highlight for key: ${get_path_signature(key_path)}`);
     }
-    
+
     // Trigger re-tokenization by refreshing semantic tokens
     // This is done by re-registering the provider which forces a refresh
-    if (rainbow_token_event !== null) {
-        enable_dynamic_semantic_tokenization();
-    }
+    enable_dynamic_semantic_tokenization();
 }
 
 
