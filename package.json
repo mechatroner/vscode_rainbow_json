@@ -5,6 +5,7 @@
     "version": "0.0.1",
     "publisher": "mechatroner",
     "license": "MIT",
+    "icon": "rainbow_json_logo_128.png",
     "repository": "https://github.com/mechatroner/vscode_rainbow_json",
     "engines": {
         "vscode": "^1.100.0"

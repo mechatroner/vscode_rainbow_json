@@ -172,7 +172,7 @@ function tokenize_json_line_in_place(line, line_num, dst_tokens) {
  * @returns {JsonToken[]}
  */
 function tokenize_json_line(line, line_num=null) {
-    tokens = []
+    let tokens = []
     tokenize_json_line_in_place(line, line_num, tokens);
     return tokens;
 }

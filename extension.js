@@ -18,7 +18,6 @@ const max_num_keys_to_highlight = rainbow_token_types.length;
 
 // TODO improve logging, make it production ready.
 // TODO add proper readme
-// TODO add icon and update metadata
 // TODO fix consistent coloring when unselecting a key.
 
 
