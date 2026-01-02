@@ -16,13 +16,12 @@ const tokens_legend = new vscode.SemanticTokensLegend(all_token_types);
 
 const max_num_keys_to_highlight = rainbow_token_types.length;
 
-// TODO improve logging, make it production ready.
-// TODO add proper readme
-// TODO fix consistent coloring when unselecting a key.
-
-
+// TODO add proper readme with a screenshot.
+// TODO improve unit tests
+// TODO do not start highlighting if initial JSON validation for the file fails.
 
 // TODO (post MVP): add option to highlight by last key path only.
+// TODO (post MVP): use vscode channel for logging like in rainbow csv instead of console.log
 
 /**
  * @param {typeof vscode} vscode
@@ -133,7 +132,6 @@ function get_keys_to_highlight(document) {
     }
     let keys_to_highlight = per_doc_reversed_keys_to_highlight.get(document.fileName);
     if (!keys_to_highlight || !keys_to_highlight.length) {
-        console.log('Keys to highlight empty. Returning.');
         return [];
     }
     // Reverse from root -> leaf to leaf -> root so that we can do prefix matching more naturally.
@@ -242,7 +240,6 @@ class RainbowTokenProvider {
      */
     async provideDocumentRangeSemanticTokens(document, range, _token) {
         // TODO re-evaluate error-handling strategy to make sure it is sensible.
-        console.log('providing tokens');
         if (document.languageId != "json" && document.languageId != "jsonl") {
             return null;
         }
@@ -250,16 +247,13 @@ class RainbowTokenProvider {
 
         let parsing_range = extend_range_by_margin(vscode, document, range, 100);
         let [lines, line_nums] = parse_document_range(vscode, document, parsing_range);
-        console.log(`Found ${lines.length} lines to parse`);
         let records;
         try {
             records = json_parse.parse_json_objects(lines, line_nums);
         } catch (e) {
             // If parsing fails, return empty tokens
-            console.log('JSON parsing error:', e.message);
             return null;
         }
-        console.log(`Parsed ${records.length} JSON records`);
         const builder = new vscode.SemanticTokensBuilder(tokens_legend);
         let lastPushedPosition = parsing_range.start;
         for (let record of records) {
