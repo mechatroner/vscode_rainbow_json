@@ -124,6 +124,12 @@
                     "default": 2,
                     "order": 2,
                     "description": "Minimum number of keys that must meet the frequency threshold for auto-highlighting to activate"
+                },
+                "rainbow-json.autohighlight_max_keys_count": {
+                    "type": "number",
+                    "default": 5,
+                    "maximum": 8,
+                    "description": "Maximum number of keys to auto-highlight"
                 }
             }
         }

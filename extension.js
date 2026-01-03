@@ -19,8 +19,7 @@ const max_num_keys_to_highlight = rainbow_token_types.length;
 
 // TODO add proper readme with a screenshot.
 // TODO improve unit tests
-// TODO add min autodetection frequency config option to highlight e.g. 2, to avoid highlighting configs.
-// TODO add min number of keys with the min frequency e.g. 2, so we would have 2 x 2 table at least.
+// TODO add default max num keys to highlight
 
 // TODO (post MVP): add option to highlight by last key path only.
 // TODO (post MVP): use vscode channel for logging like in rainbow csv instead of console.log
@@ -66,6 +65,8 @@ function get_keys_to_highlight(document) {
         let config = vscode.workspace.getConfiguration('rainbow-json');
         let min_frequency = config.get('autohighlight_key_frequency', 2);
         let min_keys_count = config.get('autohighlight_min_keys_count', 2);
+        let max_keys_count = config.get('autohighlight_max_keys_count', 5);
+        max_keys_count = Math.min(max_keys_count, rainbow_token_types.length);
 
         let [lines, line_nums] = parse_document_range(vscode, document, new vscode.Range(0, 0, document.lineCount, 0));
         let frequency_stats = rainbow_utils.calculate_key_frequency_stats(lines, line_nums);
@@ -73,7 +74,7 @@ function get_keys_to_highlight(document) {
         if (frequency_stats.length < min_keys_count) {
             frequency_stats = [];
         }
-        frequency_stats = frequency_stats.slice(0, 5);
+        frequency_stats = frequency_stats.slice(0, max_keys_count);
         let keys_to_highlight = frequency_stats.map(stat => stat.path.slice().reverse());
         per_doc_reversed_keys_to_highlight.set(document.fileName, keys_to_highlight);
     }
