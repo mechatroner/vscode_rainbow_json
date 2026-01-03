@@ -30,7 +30,7 @@ function collect_keys_from_node(node, path, freq_map) {
     }
 }
 
-function calculate_key_frequency_stats(lines, line_nums, max_num_keys) {
+function calculate_key_frequency_stats(lines, line_nums) {
     let records = [];
     try {
         // TODO in stats calculation we can do less robust error handling than in incremental parsing to ensure that we can use 'root' as the first path element.
@@ -57,7 +57,7 @@ function calculate_key_frequency_stats(lines, line_nums, max_num_keys) {
         });
 
     // Return top N most frequent (key, path) pairs
-    return sorted_pairs.slice(0, max_num_keys).map(item => ({ path: item.path, count: item.count }));
+    return sorted_pairs.slice().map(item => ({ path: item.path, count: item.count }));
 }
 
 module.exports = {

@@ -63,8 +63,17 @@ function get_keys_to_highlight(document) {
         return [];
     }
     if (!per_doc_reversed_keys_to_highlight.has(document.fileName)) {
+        let config = vscode.workspace.getConfiguration('rainbow-json');
+        let min_frequency = config.get('autohighlight_key_frequency', 2);
+        let min_keys_count = config.get('autohighlight_min_keys_count', 2);
+
         let [lines, line_nums] = parse_document_range(vscode, document, new vscode.Range(0, 0, document.lineCount, 0));
-        let frequency_stats = rainbow_utils.calculate_key_frequency_stats(lines, line_nums, /*max_num_keys=*/5);
+        let frequency_stats = rainbow_utils.calculate_key_frequency_stats(lines, line_nums);
+        frequency_stats = frequency_stats.filter(stat => stat.count >= min_frequency);
+        if (frequency_stats.length < min_keys_count) {
+            frequency_stats = [];
+        }
+        frequency_stats = frequency_stats.slice(0, 5);
         let keys_to_highlight = frequency_stats.map(stat => stat.path.slice().reverse());
         per_doc_reversed_keys_to_highlight.set(document.fileName, keys_to_highlight);
     }

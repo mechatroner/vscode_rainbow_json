@@ -108,7 +108,25 @@
               "comment": ["comment"]
             }
           }
-        ]
+        ],
+        "configuration": {
+            "type": "object",
+            "title": "Rainbow JSON",
+            "properties": {
+                "rainbow-json.autohighlight_key_frequency": {
+                    "type": "number",
+                    "default": 2,
+                    "order": 1,
+                    "description": "Minimum key frequency for auto-highlighting"
+                },
+                "rainbow-json.autohighlight_min_keys_count": {
+                    "type": "number",
+                    "default": 2,
+                    "order": 2,
+                    "description": "Minimum number of keys that must meet the frequency threshold for auto-highlighting to activate"
+                }
+            }
+        }
     },
     "scripts": {},
     "devDependencies": {
