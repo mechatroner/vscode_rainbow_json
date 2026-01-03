@@ -18,7 +18,6 @@ const tokens_legend = new vscode.SemanticTokensLegend(all_token_types);
 const max_num_keys_to_highlight = rainbow_token_types.length;
 
 // TODO add proper readme with a screenshot.
-// TODO improve unit tests
 
 // TODO (post MVP): add option to highlight by last key path only.
 // TODO (post MVP): use vscode channel for logging like in rainbow csv instead of console.log

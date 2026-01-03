@@ -1,5 +1,6 @@
 // Import the tokenize_line function
 const { tokenize_json_line, parse_json_objects, JsonTokenizerError, JsonSyntaxError, JsonIncompleteError } = require('./json_parse.js');
+const rainbow_utils = require('./rainbow_utils.js');
 
 /**
  * @param {boolean} condition
@@ -558,6 +559,141 @@ test('Parse with empty lines between objects', () => {
     assertEquals(result[0].children[0].value, '1');
     assertEquals(result[1].children[0].value, '2');
     assertEquals(result[2].children[0].value, '3');
+});
+
+// rainbow_utils tests - get_path_signature
+test('get_path_signature joins path with arrow separator', () => {
+    const result = rainbow_utils.get_path_signature(['foo', 'bar', 'baz']);
+    assertEquals(result, 'foo->bar->baz');
+});
+
+test('get_path_signature returns null for null input', () => {
+    const result = rainbow_utils.get_path_signature(null);
+    assertEquals(result, null);
+});
+
+test('get_path_signature handles single element path', () => {
+    const result = rainbow_utils.get_path_signature(['foo']);
+    assertEquals(result, 'foo');
+});
+
+test('get_path_signature handles empty array', () => {
+    const result = rainbow_utils.get_path_signature([]);
+    assertEquals(result, '');
+});
+
+// rainbow_utils tests - calculate_key_frequency_stats (tests collect_keys_from_node indirectly)
+test('frequency stats collects keys from simple object', () => {
+    const lines = ['{"name": "Alice", "age": 30}'];
+    const line_nums = [0];
+    const stats = rainbow_utils.calculate_key_frequency_stats(lines, line_nums);
+    
+    assertEquals(stats.length, 2);
+    assertEquals(stats[0].path.join('->'), '"name"');
+    assertEquals(stats[0].count, 1);
+    assertEquals(stats[1].path.join('->'), '"age"');
+    assertEquals(stats[1].count, 1);
+});
+
+test('frequency stats counts repeated keys across multiple objects', () => {
+    const lines = ['{"name": "Alice"}', '{"name": "Bob"}', '{"name": "Charlie"}'];
+    const line_nums = [0, 1, 2];
+    const stats = rainbow_utils.calculate_key_frequency_stats(lines, line_nums);
+    
+    assertEquals(stats.length, 1);
+    assertEquals(stats[0].path.join('->'), '"name"');
+    assertEquals(stats[0].count, 3);
+});
+
+test('frequency stats collects nested keys with full path', () => {
+    const lines = ['{"user": {"name": "Alice", "address": {"city": "NYC"}}}'];
+    const line_nums = [0];
+    const stats = rainbow_utils.calculate_key_frequency_stats(lines, line_nums);
+    
+    const paths = stats.map(s => s.path.join('->'));
+    assert(paths.includes('"user"'), 'Should include "user"');
+    assert(paths.includes('"user"->"name"'), 'Should include "user"->"name"');
+    assert(paths.includes('"user"->"address"'), 'Should include "user"->"address"');
+    assert(paths.includes('"user"->"address"->"city"'), 'Should include "user"->"address"->"city"');
+});
+
+test('frequency stats does not create path entries for array elements', () => {
+    const lines = ['{"items": [1, 2, 3]}'];
+    const line_nums = [0];
+    const stats = rainbow_utils.calculate_key_frequency_stats(lines, line_nums);
+    
+    assertEquals(stats.length, 1);
+    assertEquals(stats[0].path.join('->'), '"items"');
+});
+
+test('frequency stats collects keys from objects inside arrays', () => {
+    const lines = ['{"items": [{"id": 1}, {"id": 2}]}'];
+    const line_nums = [0];
+    const stats = rainbow_utils.calculate_key_frequency_stats(lines, line_nums);
+    
+    const paths = stats.map(s => s.path.join('->'));
+    assert(paths.includes('"items"'), 'Should include "items"');
+    assert(paths.includes('"items"->"id"'), 'Should include "items"->"id"');
+    
+    const idStat = stats.find(s => s.path.join('->') === '"items"->"id"');
+    assertEquals(idStat.count, 2);
+});
+
+test('frequency stats sorts by frequency descending', () => {
+    const lines = ['{"a": 1, "b": 2}', '{"b": 3}', '{"b": 4}'];
+    const line_nums = [0, 1, 2];
+    const stats = rainbow_utils.calculate_key_frequency_stats(lines, line_nums);
+    
+    assertEquals(stats[0].path.join('->'), '"b"');
+    assertEquals(stats[0].count, 3);
+    assertEquals(stats[1].path.join('->'), '"a"');
+    assertEquals(stats[1].count, 1);
+});
+
+test('frequency stats preserves first-seen order for ties', () => {
+    const lines = ['{"first": 1, "second": 2, "third": 3}'];
+    const line_nums = [0];
+    const stats = rainbow_utils.calculate_key_frequency_stats(lines, line_nums);
+    
+    assertEquals(stats.length, 3);
+    assertEquals(stats[0].path.join('->'), '"first"');
+    assertEquals(stats[1].path.join('->'), '"second"');
+    assertEquals(stats[2].path.join('->'), '"third"');
+});
+
+test('frequency stats returns empty array for invalid JSON', () => {
+    const lines = ['not valid json'];
+    const line_nums = [0];
+    const stats = rainbow_utils.calculate_key_frequency_stats(lines, line_nums);
+    
+    assertEquals(stats.length, 0);
+});
+
+test('frequency stats returns empty array for empty input', () => {
+    const stats = rainbow_utils.calculate_key_frequency_stats([], []);
+    assertEquals(stats.length, 0);
+});
+
+test('frequency stats handles deeply nested structures', () => {
+    const lines = ['{"a": {"b": {"c": {"d": 1}}}}'];
+    const line_nums = [0];
+    const stats = rainbow_utils.calculate_key_frequency_stats(lines, line_nums);
+    
+    const paths = stats.map(s => s.path.join('->'));
+    assert(paths.includes('"a"'), 'Should include "a"');
+    assert(paths.includes('"a"->"b"'), 'Should include "a"->"b"');
+    assert(paths.includes('"a"->"b"->"c"'), 'Should include "a"->"b"->"c"');
+    assert(paths.includes('"a"->"b"->"c"->"d"'), 'Should include "a"->"b"->"c"->"d"');
+});
+
+test('frequency stats handles mixed arrays and objects', () => {
+    const lines = ['{"data": [{"items": [{"id": 1}]}, {"items": [{"id": 2}]}]}'];
+    const line_nums = [0];
+    const stats = rainbow_utils.calculate_key_frequency_stats(lines, line_nums);
+    
+    const idStat = stats.find(s => s.path.join('->') === '"data"->"items"->"id"');
+    assert(idStat, 'Should find "data"->"items"->"id"');
+    assertEquals(idStat.count, 2);
 });
 
 // Parse command line arguments
