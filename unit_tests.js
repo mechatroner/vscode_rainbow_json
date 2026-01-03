@@ -367,7 +367,7 @@ test('Parse deeply nested structure', () => {
     assertEquals(node.value, '1');
     assertEquals(node.parent_key, '"d"');
     assertEquals(node.parent_key_position.line, 1);
-    assertEquals(node.parent_key_position.column, 19);
+    assertEquals(node.parent_key_position.character, 19);
 });
 
 test('Parse with line numbers', () => {
