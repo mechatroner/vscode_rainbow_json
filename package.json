@@ -2,7 +2,7 @@
     "name": "rainbow-json",
     "displayName": "Rainbow JSON",
     "description": "Highlight repeating keys in JSON datasets in different colors for better readability",
-    "version": "0.0.1",
+    "version": "0.1.0",
     "publisher": "mechatroner",
     "license": "MIT",
     "icon": "rainbow_json_logo_128.png",
@@ -71,43 +71,87 @@
             ]
         },
         "configurationDefaults": {
-          "[json][jsonl]": {
-            "editor.semanticHighlighting.enabled": true
-          }
+            "[json][jsonl]": {
+                "editor.semanticHighlighting.enabled": true
+            }
         },
         "semanticTokenScopes": [
-          {
-            "language": "json",
-            "scopes": {
-              "rainbow1": ["source.json"],
-              "rainbow2": ["keyword.rainbow2"],
-              "rainbow3": ["entity.name.function.rainbow3"],
-              "rainbow4": ["comment.rainbow4"],
-              "rainbow5": ["string.rainbow5"],
-              "rainbow6": ["variable.parameter.rainbow6"],
-              "rainbow7": ["constant.numeric.rainbow7"],
-              "rainbow8": ["entity.name.type.rainbow8"],
-              "rainbow9": ["markup.bold.rainbow9"],
-              "rainbow10": ["invalid.rainbow10"],
-              "comment": ["comment"]
+            {
+                "language": "json",
+                "scopes": {
+                    "rainbow1": [
+                        "source.json"
+                    ],
+                    "rainbow2": [
+                        "keyword.rainbow2"
+                    ],
+                    "rainbow3": [
+                        "entity.name.function.rainbow3"
+                    ],
+                    "rainbow4": [
+                        "comment.rainbow4"
+                    ],
+                    "rainbow5": [
+                        "string.rainbow5"
+                    ],
+                    "rainbow6": [
+                        "variable.parameter.rainbow6"
+                    ],
+                    "rainbow7": [
+                        "constant.numeric.rainbow7"
+                    ],
+                    "rainbow8": [
+                        "entity.name.type.rainbow8"
+                    ],
+                    "rainbow9": [
+                        "markup.bold.rainbow9"
+                    ],
+                    "rainbow10": [
+                        "invalid.rainbow10"
+                    ],
+                    "comment": [
+                        "comment"
+                    ]
+                }
+            },
+            {
+                "language": "jsonl",
+                "scopes": {
+                    "rainbow1": [
+                        "source.json.lines"
+                    ],
+                    "rainbow2": [
+                        "keyword.rainbow2"
+                    ],
+                    "rainbow3": [
+                        "entity.name.function.rainbow3"
+                    ],
+                    "rainbow4": [
+                        "comment.rainbow4"
+                    ],
+                    "rainbow5": [
+                        "string.rainbow5"
+                    ],
+                    "rainbow6": [
+                        "variable.parameter.rainbow6"
+                    ],
+                    "rainbow7": [
+                        "constant.numeric.rainbow7"
+                    ],
+                    "rainbow8": [
+                        "entity.name.type.rainbow8"
+                    ],
+                    "rainbow9": [
+                        "markup.bold.rainbow9"
+                    ],
+                    "rainbow10": [
+                        "invalid.rainbow10"
+                    ],
+                    "comment": [
+                        "comment"
+                    ]
+                }
             }
-          },
-          {
-            "language": "jsonl",
-            "scopes": {
-              "rainbow1": ["source.json.lines"],
-              "rainbow2": ["keyword.rainbow2"],
-              "rainbow3": ["entity.name.function.rainbow3"],
-              "rainbow4": ["comment.rainbow4"],
-              "rainbow5": ["string.rainbow5"],
-              "rainbow6": ["variable.parameter.rainbow6"],
-              "rainbow7": ["constant.numeric.rainbow7"],
-              "rainbow8": ["entity.name.type.rainbow8"],
-              "rainbow9": ["markup.bold.rainbow9"],
-              "rainbow10": ["invalid.rainbow10"],
-              "comment": ["comment"]
-            }
-          }
         ],
         "configuration": {
             "type": "object",
