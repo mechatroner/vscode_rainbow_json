@@ -7,7 +7,8 @@ let rainbow_token_event = null;
 
 let per_doc_reversed_keys_to_highlight = new Map(); // Stores per-doc reversed (leaf->root instead of root->leaf) key paths to highlight.
 
-
+let client_html_template = null;
+var web_extension_uri = null;
 
 // Start with rainbow2 because rainbow1 has no color.
 const rainbow_token_types = [/*'rainbow1', */'rainbow2', 'rainbow4', 'rainbow10', 'rainbow8', 'rainbow5', 'rainbow6', 'rainbow9', 'rainbow7'/*, 'rainbow3'*/];
@@ -22,13 +23,7 @@ const max_num_keys_to_highlight = rainbow_token_types.length;
 // TODO (post MVP): add option to highlight by last key path only.
 // TODO (post MVP): use vscode channel for logging like in rainbow csv instead of console.log
 
-/**
- * @param {typeof vscode} vscode
- * @param {vscode.TextDocument} doc
- * @param {vscode.Range} range
- * @param {number} margin
- * @returns {vscode.Range}
- */
+
 function extend_range_by_margin(vscode, doc, range, margin) {
     let begin_line = Math.max(0, range.start.line - margin);
     let end_line_inclusive = Math.min(doc.lineCount - 1, range.end.line + margin);
@@ -36,12 +31,15 @@ function extend_range_by_margin(vscode, doc, range, margin) {
 }
 
 
-/**
- * @param {typeof vscode} vscode
- * @param {vscode.TextDocument} doc
- * @param {vscode.Range} range
- * @returns {[string[], number[]]}
- */
+function show_single_line_error(error_msg) {
+    var active_window = vscode.window;
+    if (!active_window)
+        return;
+    // Do not "await" error messages because the promise gets resolved only on error dismissal.
+    active_window.showErrorMessage(error_msg);
+}
+
+
 function parse_document_range(vscode, doc, range) {
     let lines = [];
     let line_nums = [];
@@ -54,6 +52,7 @@ function parse_document_range(vscode, doc, range) {
     }
     return [lines, line_nums];
 }
+
 
 function get_keys_to_highlight(document) {
     if (!document.fileName) {
@@ -174,6 +173,7 @@ function push_node_tokens(document, keys_to_highlight, builder, node, path, last
     return lastPushedPosition;
 }
 
+
 class RainbowTokenProvider {
     // We don't utilize typescript `implement` interface keyword, because TS doesn't seem to be exporting interfaces to JS (unlike classes).
     constructor() {
@@ -234,6 +234,7 @@ function enable_dynamic_semantic_tokenization() {
     console.log('Dynamic semantic tokenization enabled');
 }
 
+
 function disable_dynamic_semantic_tokenization() {
     console.log('Disabling dynamic semantic tokenization');
     if (rainbow_token_event !== null) {
@@ -243,13 +244,6 @@ function disable_dynamic_semantic_tokenization() {
 }
 
 
-/**
- * Find the key path at a given position in the document
- * @param {json_parse.RainbowJsonNode} node
- * @param {vscode.Position} position
- * @param {string[]} current_path
- * @returns {string[]|null} - The path to the key at position, or null if not found
- */
 function find_key_path_at_position(node, position, current_path) {
     current_path = current_path.slice();
     if (node.parent_key) {
@@ -279,12 +273,7 @@ function find_key_path_at_position(node, position, current_path) {
     return null;
 }
 
-/**
- * Find key path at cursor position in the document
- * @param {vscode.TextDocument} document
- * @param {vscode.Position} position
- * @returns {string[]|null}
- */
+
 function get_key_path_at_cursor(document, position) {
     let [lines, line_nums] = parse_document_range(vscode, document, new vscode.Range(0, 0, document.lineCount, 0));
     let records;
@@ -304,11 +293,7 @@ function get_key_path_at_cursor(document, position) {
     return null;
 }
 
-/**
- * Toggle a key path in the highlight list for a document
- * @param {vscode.TextDocument} document
- * @param {string[]} key_path - Path in root->leaf order
- */
+
 function toggle_key_highlight(document, key_path) {
     if (!document.fileName) {
         vscode.window.showErrorMessage('Cannot toggle highlight: document has no file name');
@@ -356,11 +341,84 @@ function toggle_key_highlight(document, key_path) {
 }
 
 
-/**
- * @param {vscode.ExtensionContext} context
- */
+async function load_resource_file_for_web(extension_uri, resource_path) {
+    let resource_uri = vscode.Uri.joinPath(extension_uri, resource_path);
+    let bytes = await vscode.workspace.fs.readFile(resource_uri);
+    // Using TextDecoder because it should work fine in web extension.
+    return new TextDecoder().decode(bytes);
+}
+
+
+async function load_resource_file_universal(resource_path) {
+    let resource_data = await load_resource_file_for_web(web_extension_uri, resource_path);
+    return resource_data;
+}
+
+
+function adjust_webview_paths(preview_panel, client_html, paths_list) {
+    for (const local_path of paths_list) {
+        let adjusted_webview_url = vscode.Uri.joinPath(web_extension_uri, local_path);
+        client_html = client_html.replace(`src="${local_path}"`, `src="${adjusted_webview_url}"`);
+    }
+    return client_html;
+}
+
+
+async function edit_rbql(integration_test_options=null) {
+    let active_window = vscode.window;
+    if (!active_window)
+        return;
+    let active_editor = active_window.activeTextEditor;
+    if (!active_editor)
+        return;
+    let active_doc = active_editor.document;
+    if (!active_doc)
+        return;
+    let orig_uri = active_doc.uri;
+    if (!orig_uri)
+        return;
+    // For web orig_uri.scheme can have other valid values e.g. `vscode-test-web` when testing the browser integration.
+    if (orig_uri.scheme != 'file' && orig_uri.scheme != 'untitled' && !is_web_ext)
+        return;
+    if (orig_uri.scheme == 'file' && active_doc.isDirty && !is_web_ext) {
+        show_single_line_error("Unable to run RBQL: file has unsaved changes");
+        return;
+    }
+    let input_path = null;
+    if (orig_uri.scheme == 'untitled' && !is_web_ext) {
+        // Scheme 'untitled' means that the document is a scratch buffer that hasn't been saved yet, see https://code.visualstudio.com/api/references/document-selector
+        let data = active_doc.getText();
+        let rnd_suffix = String(Math.floor(Math.random() * 1000000));
+        input_path = path.join(os.tmpdir(), `${scratch_buf_marker}_${rnd_suffix}.txt`);
+        // TODO consider adding username to the input_path and using chmod 600 on it.
+        fs.writeFileSync(input_path, data);
+    } else {
+        input_path = active_doc.fileName;
+    }
+
+    if (!input_path) {
+        show_single_line_error("Unable to run RBQL for this file");
+        return;
+    }
+
+    rbql_context = {
+        "input_document": active_doc,
+        "input_document_path": input_path
+    };
+
+    rbql_preview_panel = vscode.window.createWebviewPanel('rbql-console', 'RBQL Console', vscode.ViewColumn.Active, {enableScripts: true});
+    if (!client_html_template) {
+        client_html_template = await load_resource_file_universal('rbql_client.html');
+    }
+    rbql_preview_panel.webview.html = adjust_webview_paths(rbql_preview_panel, client_html_template, ['rbql_client.js']);
+    rbql_preview_panel.webview.onDidReceiveMessage(function(message) { handle_rbql_client_message(rbql_preview_panel.webview, message, integration_test_options); });
+}
+
+
+
 async function activate(context) {
     console.log('Activating Rainbow JSON');
+    web_extension_uri = context.extensionUri;
 
     enable_dynamic_semantic_tokenization();
     let enable_disposable = vscode.commands.registerCommand('rainbow-json.Enable', () => {
@@ -369,6 +427,7 @@ async function activate(context) {
     let disable_disposable = vscode.commands.registerCommand('rainbow-json.Disable', () => {
         disable_dynamic_semantic_tokenization();
     });
+    let rbql_cmd = vscode.commands.registerCommand('rainbow-json.RBQL', edit_rbql);
     let toggle_key_disposable = vscode.commands.registerCommand('rainbow-json.ToggleKeyHighlight', () => {
         let editor = vscode.window.activeTextEditor;
         if (!editor) {
@@ -403,6 +462,7 @@ async function activate(context) {
     context.subscriptions.push(enable_disposable);
     context.subscriptions.push(disable_disposable);
     context.subscriptions.push(toggle_key_disposable);
+    context.subscriptions.push(rbql_cmd);
 }
 
 function deactivate() {}

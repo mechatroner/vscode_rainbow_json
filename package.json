@@ -39,6 +39,11 @@
                 "command": "rainbow-json.ToggleKeyHighlight",
                 "category": "Rainbow JSON",
                 "title": "Toggle Key Highlight"
+            },
+            {
+                "command": "rainbow-json.RBQL",
+                "category": "Rainbow JSON",
+                "title": "RBQL Query for JSON"
             }
         ],
         "submenus": [

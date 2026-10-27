@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+
+<meta charset="utf-8">
+
+<style>
+
+:root {
+  --inputwidth: 80%;
+}
+
+html * {
+    font-size: 16px !important;
+}
+
+body {
+    background-color: var(--vscode-editor-background);
+    color: var(--vscode-editor-foreground);
+}
+
+th { 
+    padding: 3px 8px;
+    border-right: 1px solid;
+    border-top: 1px solid;
+    border-bottom: 1px solid;
+    border-right-color: var(--vscode-window-activeBorder);
+    border-top-color: var(--vscode-window-activeBorder);
+    border-bottom-color: var(--vscode-window-activeBorder);
+    position: sticky;
+    top: 0;
+    background-color: var(--vscode-editor-background);
+    white-space: pre;
+}
+
+td {
+    padding: 3px 8px;
+    background-color: var(--vscode-editor-background);
+    border-right: 1px solid;
+    border-bottom: 1px solid;
+    border-right-color: var(--vscode-window-activeBorder);
+    border-bottom-color: var(--vscode-window-activeBorder);
+}
+
+table {
+    display: block;
+    white-space: nowrap;
+    border-collapse: separate;
+    background-color: var(--vscode-editor-background);
+}
+
+
+table th:first-child, table td:first-child {
+    /* Apply a left border on the first <td> or <th> in a row */
+    border-left: 1px solid;
+    border-left-color: var(--vscode-window-activeBorder);
+}
+
+
+.padded_label {
+    padding: 5px;
+}
+
+.code_sample {
+    font-style: italic;
+}
+
+
+#rbql_console {
+    margin-top: 20px;
+}
+
+.checkbox_input {
+    background-color: var(--vscode-input-background);
+    color: var(--vscode-input-foreground);
+    margin-bottom: 6px;
+    font-size: 14px !important;
+    font-family: Consolas, Monaco, monospace;
+}
+
+
+.select_input {
+    background-color: var(--vscode-input-background);
+    color: var(--vscode-input-foreground);
+    margin-bottom: 6px;
+    width: 300px;
+    font-size: 14px !important;
+    font-family: Consolas, Monaco, monospace;
+}
+
+#rbql_input {
+    margin: 0px;
+    height: 24px !important;
+    font-family: Consolas, Monaco, monospace;
+    font-size: 14px !important;
+    padding-left: 2px;
+    background-color: var(--vscode-input-background);
+    caret-color: var(--vscode-input-foreground);
+    color: var(--vscode-input-foreground);
+    display: inline-block;
+    box-sizing: border-box; /* See css-submit-button-looks-smaller-than-text-input-and-textarea */
+    vertical-align:middle;
+    width: var(--inputwidth);
+}
+
+#toggle_history_btn {
+    margin: 0px;
+    width: 28px;
+    background-color: var(--vscode-button-secondaryBackground);
+    color: var(--vscode-button-secondaryForeground);
+    height: 24px !important;
+    padding: 0px;
+    display: inline-block;
+    border-width: 0px;
+    outline:none;
+    vertical-align:middle;
+    box-sizing: border-box;
+}
+
+#toggle_history_btn:hover {
+    background-color: var(--vscode-button-secondaryHoverBackground);
+}
+
+
+#rbql_run_btn {
+    margin: 0px;
+    width: 70px;
+    background-color: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
+    height: 24px !important;
+    padding: 0px;
+    display: inline-block;
+    outline:none;
+    vertical-align:middle;
+    box-sizing: border-box;
+    border-width: 0px;
+}
+
+#rbql_run_btn:hover {
+    background-color: var(--vscode-button-hoverBackground);
+}
+
+
+#help_btn {
+    margin: 0px;
+    width: 28px;
+    background-color: var(--vscode-button-secondaryBackground);
+    color: var(--vscode-button-secondaryForeground);
+    height: 24px !important;
+    padding: 0px;
+    display: inline-block;
+    outline:none;
+    vertical-align:middle;
+    box-sizing: border-box;
+    border-width: 0px;
+}
+
+#help_btn:hover {
+    background-color: var(--vscode-button-secondaryHoverBackground);
+}
+
+
+#clear_history_btn {
+    margin: 0px;
+    background-color: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
+    height: 24px !important;
+    padding: 0px 5px 0px 5px;
+    display: inline-block;
+    float: right;
+    outline:none;
+    vertical-align:middle;
+    border:none;
+}
+
+#clear_history_btn:hover {
+    background-color: var(--vscode-button-hoverBackground);
+}
+
+.history_button {
+    margin: 0px;
+    width: 100%;
+    background-color: var(--vscode-button-secondaryBackground);
+    color: var(--vscode-button-secondaryForeground);
+    height: 24px !important;
+    font-family: Consolas, Monaco, monospace;
+    font-size: 14px !important;
+    border-width: 0px;
+    outline: none;
+    display: block;
+    text-align: left;
+    padding-left: 2px;
+    white-space: nowrap;
+}
+
+.history_button:hover {
+    background-color: var(--vscode-button-secondaryHoverBackground);
+}
+
+.navigation_button {
+    background-color: var(--vscode-button-secondaryBackground);
+    color: var(--vscode-button-secondaryForeground);
+    width: 28px;
+    font-size: 18px !important;
+    height: 28px;
+    font-weight: bold;
+    border-width: 0px;
+}
+
+.navigation_button:hover {
+    background-color: var(--vscode-button-secondaryHoverBackground);
+}
+
+
+#udf_button {
+    background-color: var(--vscode-button-secondaryBackground);
+    color: var(--vscode-button-secondaryForeground);
+    font-size: 14px !important;
+    border-width: 0px;
+    height: 24px !important;
+    outline:none;
+    vertical-align:middle;
+    padding: 0px;
+    padding-left: 12px;
+    padding-right: 12px;
+    margin-top: 8px;
+}
+
+#udf_button:hover {
+    background-color: var(--vscode-button-secondaryHoverBackground);
+}
+
+
+#query_history { 
+    font-family: Consolas, Monaco, monospace;
+    font-size: 14px !important;
+    width: var(--inputwidth);
+    z-index: 1000000; 
+    background-color: var(--vscode-notifications-background); 
+    color: var(--vscode-notifications-foreground);
+    position: fixed; 
+    display: none;
+    border-top: 1px solid;
+    border-left: 1px solid;
+    border-right: 1px solid;
+    border-color: var(--vscode-focusBorder);
+}
+
+
+#query_suggest{ 
+    width: 200px;
+    z-index: 1000010; 
+    background-color: var(--vscode-notifications-background); 
+    color: var(--vscode-notifications-foreground);
+    position: fixed; 
+    display: none;
+    border-top: 1px solid;
+    border-left: 1px solid;
+    border-right: 1px solid;
+    border-color: var(--vscode-focusBorder);
+    max-height: 300px;
+    white-space: nowrap;
+    overflow-y: auto;
+    overflow-x: hidden;
+}
+
+#history_entries {
+    font-family: Consolas, Monaco, monospace;
+    font-size: 14px !important;
+    max-height: 300px;
+    margin: 0px;
+    overflow-x: auto;
+    overflow-y: auto;
+    white-space: nowrap;
+}
+
+
+#query_history_header { 
+    font-size: 18px !important;
+    height: 24px;
+    margin: 0px;
+}
+
+
+#table_window {
+    max-width: 95%;
+    max-height: 350px;
+    overflow: scroll;
+    width:fit-content;
+    /*border: 2px solid black;*/
+}
+
+#rbql_error_message { 
+    width: 50%; 
+    top: 20%; 
+    left: 25%; 
+    z-index: 1000000; 
+    background-color: var(--vscode-notifications-background); 
+    color: var(--vscode-notifications-foreground);
+    position: fixed; 
+    display: none;
+}
+
+#rbql_error_message_header { 
+    background-color: var(--vscode-inputValidation-errorBackground); 
+    color: var(--vscode-inputValidation-errorForeground);
+    font-size: 18px !important;
+    height: 26px;
+    font-weight: bold;
+}
+
+#ack_error { 
+    width: 70px;
+    background-color: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
+    display: inline-block;
+    border:none;
+    font-size: 18px !important;
+    height: 28px;
+}
+
+#ack_error:hover { 
+    background-color: var(--vscode-button-hoverBackground);
+}
+
+#error_message_details { 
+    height: 100px;
+    font-family: Consolas, Monaco, monospace;
+    overflow: auto;
+    border: 1px solid;
+    border-color: var(--vscode-focusBorder);
+    white-space: pre;
+    margin: 5px;
+    background-color: var(--vscode-notifications-background); 
+    color: var(--vscode-notifications-foreground);
+}
+
+[type="checkbox"]
+{
+    margin-left: 0px;
+    vertical-align:middle;
+    height: 20px;
+    width: 20px;
+}
+
+</style>
+
+
+<script src="contrib/textarea-caret-position/index.js"></script>
+<script src="rbql_client.js"></script>
+
+
+</head>
+
+
+<body>
+
+<div id="rbql_console">
+    <div id="table_group">
+        <div id="table_window">
+            <table id="preview_table">
+            </table>
+        </div>
+        <div id="navig_bar">
+            <button class="navigation_button" title="Begin" id="go_begin">&#171;</button>
+            <button class="navigation_button" title="Back" id="go_backward">&#8249;</button>
+            <button class="navigation_button" title="Forward" id="go_forward">&#8250;</button>
+            <button class="navigation_button" title="End" id="go_end">&#187;</button>
+        </div>
+    </div>
+    <div id="query_group" style="margin-top: 10px;">
+        <!-- Do not remove the weird comments below, we need them to avoid spaces between inline elements, see https://css-tricks.com/fighting-the-space-between-inline-block-elements/ -->
+        <input type="text" id="rbql_input" placeholder="Example: SELECT a1, a2 WHERE a2 != 'foobar' ORDER BY a1 LIMIT 10" autofocus><!--
+        --><button id="toggle_history_btn" title="Query history">&#9650;</button><!--
+        --><button id="rbql_run_btn" title="Run query and open result set in a new tab">Run</button><!--
+        --><button id="help_btn" title="Help">?</button>
+    </div>
+    <h3 style="margin-bottom: 6px; margin-top: 10px;">&#9881; Query settings</h3>
+    <div style="margin-left: 30px;">
+        <div id="with_headers_section">
+            <label style="word-wrap:break-word" title="Indicate that the input (and join) table has header in the first line"><input class="checkbox_input" id="with_headers" type="checkbox"/>Input table has header</label>
+        </div>
+        <div>
+            <div>
+              <span class="select_info">Output format</span>
+            </div>
+            <select class="select_input" id="select_output_format" title="Output table format">
+              <option class="select_input" value="input">Same as input (Default)</option>
+              <option class="select_input" value="csv">CSV</option>
+              <option class="select_input" value="tsv">TSV</option>
+            </select>
+        </div>
+        <div>
+            <div>
+              <span class="select_info">Encoding</span>
+            </div>
+            <select class="select_input" id="select_encoding" title="Input and output encoding">
+              <option class="select_input" value="utf-8">UTF-8</option>
+              <option class="select_input" value="latin-1">Binary/Latin-1</option>
+            </select>
+        </div>
+        <div>
+            <div>
+              <span class="select_info">Backend language for RBQL</span>
+            </div>
+            <select class="select_input" id="select_backend_language">
+              <option class="select_input" value="js">JavaScript</option>
+              <option class="select_input" value="pyhon">Python (Requires python installed)</option>
+            </select>
+        </div>
+        <div>
+            <button id="udf_button" title="Edit UDF (User Defined Functions) - will open a new tab with UDF file">Edit UDF...</button>
+        </div>
+    </div>
+</div>
+
+
+<div id="query_history">
+    <div id="query_history_header">
+        <span class="padded_label">Query history</span>
+        <button id="clear_history_btn">Clear history</button>
+    </div>
+    <div id="history_entries">
+    </div>
+</div>
+
+
+<div id="query_suggest">
+</div>
+
+
+<div id="rbql_error_message">
+    <div id="rbql_error_message_header">
+        <span class="padded_label">&#9888; Error while executing RBQL query!</span>
+    </div>
+    <br>
+    <div>
+        <span class="padded_label" id="error_message_header"></span>
+    </div>
+    <br>
+    <div>
+        <span class="padded_label">Details:</span>
+        <br>
+        <div id="error_message_details"></div>
+    </div>
+    <div style="display: flex; justify-content:center;">
+        <button id="ack_error">OK</button>
+    </div>
+</div>
+
+
+</body>
+
+</html>
