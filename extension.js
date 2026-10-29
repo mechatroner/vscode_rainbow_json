@@ -17,12 +17,21 @@ const all_token_types = rainbow_token_types.concat(['rainbow1', ambient_token_ty
 const tokens_legend = new vscode.SemanticTokensLegend(all_token_types);
 
 const max_num_keys_to_highlight = rainbow_token_types.length;
+const scratch_buf_marker = 'vscode_rbql_scratch';
 
 // TODO add proper readme with a screenshot.
 
 // TODO (post MVP): add option to highlight by last key path only.
 // TODO (post MVP): use vscode channel for logging like in rainbow csv instead of console.log
 
+
+const preview_window_size = 100;
+const is_web_ext = true; // FIXME get rid of this since it is always True.
+
+// This `global_state` is persistent across VSCode restarts.
+let global_state = null;
+
+let last_rbql_queries = new Map(); // Query history does not replace this structure, it is also used to store partially entered queries for preview window switch.
 
 function extend_range_by_margin(vscode, doc, range, margin) {
     let begin_line = Math.max(0, range.start.line - margin);
@@ -357,10 +366,117 @@ async function load_resource_file_universal(resource_path) {
 
 function adjust_webview_paths(preview_panel, client_html, paths_list) {
     for (const local_path of paths_list) {
-        let adjusted_webview_url = vscode.Uri.joinPath(web_extension_uri, local_path);
+        let adjusted_webview_url = preview_panel.webview.asWebviewUri(vscode.Uri.joinPath(web_extension_uri, local_path)); // FIXME make sure it works in web mode too.
         client_html = client_html.replace(`src="${local_path}"`, `src="${adjusted_webview_url}"`);
     }
     return client_html;
+}
+
+
+function sample_preview_records_from_context(rbql_context, dst_message, preview_window_size, cached_table_parse_result) {
+    rbql_context.requested_start_record = Math.max(rbql_context.requested_start_record, 0);
+    dst_message.preview_records = [['{"foo": "bar"}'], ['{"hello": "world"}'], ['{"hello": "world"}']]; // FIXME
+    dst_message.actual_start_record = rbql_context.requested_start_record;
+}
+
+
+function file_path_to_query_key(file_path) {
+    return (file_path && file_path.indexOf(scratch_buf_marker) != -1) ? scratch_buf_marker : file_path;
+}
+
+
+function get_from_global_state(key, default_value) {
+    // Load KV pair from the "global state" which is persistent across VSCode restarts.
+    if (global_state) {
+        var value = global_state.get(key);
+        if (value !== null && value !== undefined)
+            return value;
+    }
+    return default_value;
+}
+
+
+async function handle_rbql_client_message(webview, message, integration_test_options=null) {
+    let message_type = message['msg_type'];
+
+    if (message_type == 'handshake') {
+        var backend_language = get_from_global_state('rbql_backend_language', 'js');
+        var init_msg = {'msg_type': 'handshake', 'backend_language': backend_language};
+        sample_preview_records_from_context(rbql_context, init_msg, preview_window_size);
+        let path_key = file_path_to_query_key(rbql_context.input_document_path);
+        if (last_rbql_queries.has(path_key))
+            init_msg['last_query'] = last_rbql_queries.get(path_key);
+        let history_list = get_from_global_state('rbql_query_history', []);
+        init_msg['query_history'] = history_list;
+        init_msg['is_web_ext'] = is_web_ext;
+        if (integration_test_options) {
+            init_msg['integration_test_language'] = integration_test_options.rbql_backend;
+            init_msg['integration_test_query'] = integration_test_options.rbql_query;
+            init_msg['integration_test_with_headers'] = integration_test_options.with_headers || false;
+            init_msg['integration_test_delay'] = integration_test_options.integration_test_delay || 2000;
+        }
+        await webview.postMessage(init_msg);
+    }
+
+    if (message_type == 'update_query') {
+        let rbql_query = message['query'];
+        if (!rbql_query)
+            return;
+        if (rbql_context.input_document_path)
+            last_rbql_queries.set(file_path_to_query_key(rbql_context.input_document_path), rbql_query);
+    }
+
+    if (message_type == 'navigate') {
+        var navig_direction = message['direction'];
+        if (navig_direction == 'backward') {
+            rbql_context.requested_start_record -= preview_window_size;
+        } else if (navig_direction == 'forward') {
+            rbql_context.requested_start_record += preview_window_size;
+        } else if (navig_direction == 'begin') {
+            rbql_context.requested_start_record = 0;
+        } else if (navig_direction == 'end') {
+            rbql_context.requested_start_record = rbql_context.input_document.lineCount; // This is just max possible value which is incorrect and will be adjusted later.
+        }
+        let protocol_message = {'msg_type': 'navigate'};
+        sample_preview_records_from_context(rbql_context, protocol_message, preview_window_size);
+        await webview.postMessage(protocol_message);
+    }
+
+    if (message_type == 'run') {
+        let rbql_query = message['query'];
+        let backend_language = message['backend_language'];
+        let encoding = message['encoding'];
+        let output_dialect = message['output_dialect'];
+        let with_headers = message['with_headers'];
+        await update_query_history(rbql_query);
+        await run_rbql_query(webview, rbql_context.input_document_path, encoding, backend_language, rbql_query, output_dialect, with_headers, integration_test_options);
+    }
+
+    if (message_type == 'edit_udf') {
+        if (is_web_ext) {
+            await send_report_to_webview(webview, 'Input error', 'UDFs are currently not supported in web version');
+            return;
+        }
+        let backend_language = message['backend_language'];
+        let udf_file_path = null;
+        let default_content = '';
+        if (backend_language == 'js') {
+            udf_file_path = path.join(os.homedir(), '.rbql_init_source.js');
+            default_content = ll_rainbow_utils().get_default_js_udf_content();
+        } else {
+            udf_file_path = path.join(os.homedir(), '.rbql_init_source.py');
+            default_content = ll_rainbow_utils().get_default_python_udf_content();
+        }
+        if (!fs.existsSync(udf_file_path)) {
+            fs.writeFileSync(udf_file_path, default_content);
+        }
+        let udf_doc = await vscode.workspace.openTextDocument(udf_file_path);
+        await vscode.window.showTextDocument(udf_doc);
+    }
+
+    if (message_type == 'global_param_change') {
+        await save_to_global_state(message['key'], message['value']);
+    }
 }
 
 
@@ -419,6 +535,7 @@ async function edit_rbql(integration_test_options=null) {
 async function activate(context) {
     console.log('Activating Rainbow JSON');
     web_extension_uri = context.extensionUri;
+    global_state = context.globalState;
 
     enable_dynamic_semantic_tokenization();
     let enable_disposable = vscode.commands.registerCommand('rainbow-json.Enable', () => {

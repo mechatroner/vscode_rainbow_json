@@ -60,7 +60,44 @@ function calculate_key_frequency_stats(lines, line_nums) {
     return sorted_pairs.slice().map(item => ({ path: item.path, count: item.count }));
 }
 
+function get_default_js_udf_content() {
+    let default_content = `// This file can be used to store RBQL UDFs. Example:
+    //
+    // function foo(value) {
+    //     return 'foo ' + String(value.length);
+    // }
+    //
+    // Functions defined in this file can be used in RBQL queries e.g.
+    // SELECT foo(a1), a2 WHERE foo(a3) != 'foo 5' LIMIT 10
+    //
+    // Don't forget to save this file after editing!
+    //
+    // Write your own functions below this line:
+    `.replace(new RegExp(/^  */, 'mg'), '');
+    return default_content;
+}
+
+
+function get_default_python_udf_content() {
+    let default_content = `# This file can be used to store RBQL UDFs. Example:
+    #
+    # def foo(value):
+    #     return 'foo ' + str(len(value))
+    #
+    #
+    # Functions defined in this file can be used in RBQL queries e.g.
+    # SELECT foo(a1), a2 WHERE foo(a3) != 'foo 5' LIMIT 10
+    #
+    # Don't forget to save this file after editing!
+    #
+    # Write your own functions below this line:
+    `.replace(new RegExp(/^  */, 'mg'), '');
+    return default_content;
+}
+
 module.exports = {
+    get_default_js_udf_content,
+    get_default_python_udf_content,
     get_path_signature,
     calculate_key_frequency_stats
 };
