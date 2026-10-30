@@ -1,6 +1,7 @@
 const vscode = require('vscode');
 const json_parse = require('./json_parse')
 const rainbow_utils = require('./rainbow_utils');
+const rbql_json = require('./rbql_core/rbql-js/rbql_json.js');
 
 /** @type {vscode.Disposable|null} */
 let rainbow_token_event = null;
@@ -34,6 +35,14 @@ let global_state = null;
 let last_rbql_queries = new Map(); // Query history does not replace this structure, it is also used to store partially entered queries for preview window switch.
 
 
+class RainbowJsonError extends Error {
+    constructor(message) {
+        super(message);
+        this.name = 'RainbowJsonError';
+    }
+}
+
+
 class AssertionError extends Error {}
 
 function assert(condition, message=null) {
@@ -44,6 +53,19 @@ function assert(condition, message=null) {
         throw new AssertionError(message);
     }
 }
+
+
+let parse_json_string_as_stream(text) {
+    let balancing_iterator = new rbql_json.BalancingIterator(text);
+    balancing_iterator.add_fragment(text);
+    let records = [];
+    while (!balancing_iterator.empty()) {
+        records.push(balancing_iterator.advance());
+    }
+    balancing_iterator.finish();
+    return records;
+}
+
 
 let full_doc_parse(vscode_doc) {
     const starts_with_square_bracket_rgx = /^\s*\[/;
@@ -58,8 +80,10 @@ let full_doc_parse(vscode_doc) {
             // Do nothing, not a single array, proceed with stream mode.
         }
     }
-    //FIXME impl
+    let records = parse_json_string_as_stream(doc_text);
+    return [false, records];
 }
+
 
 // The main purpose of this class is to map doc_id -> records list for RBQL preview.
 // It does full doc parsing which can be expensive so we only do this when RBQL interface requested and only if document was updated.
