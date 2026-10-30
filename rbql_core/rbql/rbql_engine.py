@@ -11,6 +11,11 @@ import time # For usage inside user queries only.
 
 from ._version import __version__
 
+# Import json to use inside user queries.
+# This allows to emulate input json format with monocolumn csv format and chained queries like this:
+# Example: `SELECT json.loads(a1) | SELECT a1['name']`
+import json # for json parsing inside user queries
+
 # This module must be both python2 and python3 compatible.
 # This module works with records only. It is CSV-agnostic.
 # Do not add CSV-related logic or variables/functions/objects like "delim", "separator" etc.
@@ -133,6 +138,7 @@ def search_for_as_alias_pseudo_function(root):
 
 
 def column_info_from_node(root):
+    # One-liner for testing/debugging: `root = list(ast.iter_child_nodes(list(ast.iter_child_nodes(ast.parse('extract_tum(call_something(1, 2, "bar") + 12)["foo"]')))[0]))[0]`
     rbql_star_marker = '__RBQL_INTERNAL_STAR'
     if isinstance(root, ast.Name):
         var_name = get_field(root, 'id')
@@ -155,47 +161,52 @@ def column_info_from_node(root):
         if not isinstance(column_name, str):
             return None
         var_root = get_field(root, 'value')
-        if not isinstance(var_root, ast.Name):
-            return None
-        table_name = get_field(var_root, 'id')
-        if table_name is None or table_name not in ['a', 'b']:
-            return None
-        if column_name == rbql_star_marker:
-            return QueryColumnInfo(table_name=table_name, column_index=None, column_name=None, is_star=True, alias_name=None)
+        if isinstance(var_root, ast.Name):
+            table_name = get_field(var_root, 'id')
+            if table_name in ['a', 'b'] and column_name == rbql_star_marker:
+                return QueryColumnInfo(table_name=table_name, column_index=None, column_name=None, is_star=True, alias_name=None)
         return QueryColumnInfo(table_name=None, column_index=None, column_name=column_name, is_star=False, alias_name=None)
     if isinstance(root, ast.Subscript):
         var_root = get_field(root, 'value')
-        if not isinstance(var_root, ast.Name):
-            return None
-        table_name = get_field(var_root, 'id')
-        if table_name is None or table_name not in ['a', 'b']:
-            return None
+        table_name = None
         slice_root = get_field(root, 'slice')
         if slice_root is None:
             return None
         column_index = None
         column_name = None
-        if hasattr(ast, 'Index') and isinstance(slice_root, ast.Index):
+        if hasattr(ast, 'Constant') and isinstance(slice_root, ast.Constant): # For python versions >= 3.8
+            slice_val_root = get_field(slice_root, 'value')
+            if isinstance(slice_val_root, str):
+                column_name = slice_val_root
+                # We don't need table name for named fields since we can just name the output column with the subscript.
+                # E.g. both `get_gorm(1, 2, "bar")["foo"]` and `a["foo"]` can be just named as "foo" in the output.
+                # When the exact alias is not provided it is fine to use the best guess for column naming as long as it is reasonable and consistent.
+            elif isinstance(slice_val_root, int):
+                if not isinstance(var_root, ast.Name):
+                    return None
+                table_name = get_field(var_root, 'id')
+                if table_name is None or table_name not in ['a', 'b']:
+                    return None
+                column_index = slice_val_root - 1
+            else:
+                return None
+        elif hasattr(ast, 'Index') and isinstance(slice_root, ast.Index): # For python versions < 3.8
             # Important: Since version 3.8 ast.Constant is used instead of ast.Index.
             # Furthermore ast.Index might be removed from ast in future releases.
+            # This branch is equivalent to the branch above.
             slice_val_root = get_field(slice_root, 'value')
             column_index = None
             column_name = None
             if isinstance(slice_val_root, ast.Str):
                 column_name = get_field(slice_val_root, 's')
-                table_name = None # We don't need table name for named fields. Updated: But Why???
+                # See the explanation above on why we don't need table name here
             elif isinstance(slice_val_root, ast.Num):
+                if not isinstance(var_root, ast.Name):
+                    return None
+                table_name = get_field(var_root, 'id')
+                if table_name is None or table_name not in ['a', 'b']:
+                    return None
                 column_index = get_field(slice_val_root, 'n') - 1
-            else:
-                return None
-        elif hasattr(ast, 'Constant') and isinstance(slice_root, ast.Constant):
-            # Note: `ast.Constant` replaced `ast.Index` since version 3.8
-            slice_val_root = get_field(slice_root, 'value')
-            if isinstance(slice_val_root, str):
-                column_name = slice_val_root
-                table_name = None # We don't need table name for named fields. Updated: But Why???
-            elif isinstance(slice_val_root, int):
-                column_index = slice_val_root - 1
             else:
                 return None
         else:
@@ -207,7 +218,7 @@ def column_info_from_node(root):
     return None
 
 
-def ast_parse_select_expression_to_column_infos(select_expression):
+def ast_parse_select_expression_to_column_infos_best_effort(select_expression):
     root = ast.parse(select_expression)
     children = list(ast.iter_child_nodes(root))
     if 'body' not in root._fields:
@@ -1015,6 +1026,7 @@ def resolve_join_variables(input_variables_map, join_variables_map, variable_pai
     for join_var_1, join_var_2 in variable_pairs:
         join_var_1 = combine_string_literals(join_var_1, string_literals)
         join_var_2 = combine_string_literals(join_var_2, string_literals)
+        # TODO Can we really have ambiguity here? After getting rid of direct column names, a/b prefixes should uniquely identify the table. Consider removing this.
         if join_var_1 in input_variables_map and join_var_1 in join_variables_map:
             raise RbqlParsingError(ambiguous_error_msg.format(join_var_1))
         if join_var_2 in input_variables_map and join_var_2 in join_variables_map:
@@ -1079,56 +1091,48 @@ def query_probably_has_dictionary_variable(query_text, column_name):
 
 def parse_dictionary_variables(query_text, prefix, column_names, dst_variables_map):
     # The purpose of this algorithm is to minimize number of variables in varibale_map to improve performance, ideally it should be only variables from the query
+    # We can't go from query to header only like in parse_attribute_variables because the quoted column name string can contain backslash-escaped quotes and other special characters.
     # TODO implement algorithm for honest python f-string parsing
     assert prefix in ['a', 'b']
-    if re.search(r'(?:^|[^_a-zA-Z0-9]){}\['.format(prefix), query_text) is None:
+    if re.search(r'(?:^|[^_a-zA-Z0-9.]){}\['.format(prefix), query_text) is None:
         return
+    seen_column_names = set()
     for i in range(len(column_names)):
         column_name = column_names[i]
+        if column_name in seen_column_names:
+            continue # This ensures first seen priority - the same logic as in `parse_attribute_variables`.
+        seen_column_names.add(column_name)
         if query_probably_has_dictionary_variable(query_text, column_name):
             dst_variables_map['{}["{}"]'.format(prefix, python_string_escape_column_name(column_name, '"'))] = VariableInfo(initialize=True, index=i)
             dst_variables_map["{}['{}']".format(prefix, python_string_escape_column_name(column_name, "'"))] = VariableInfo(initialize=False, index=i)
 
 
-def parse_attribute_variables(query_text, prefix, column_names, column_names_source, dst_variables_map):
+def parse_attribute_variables(query_text, prefix, column_names, dst_variables_map):
     # The purpose of this algorithm is to minimize number of variables in varibale_map to improve performance, ideally it should be only variables from the query
 
     # TODO ideally we should either:
     # * not search inside string literals (excluding brackets in f-strings) OR
     # * check if column_name is not among reserved python keywords like "None", "if", "else", etc
     assert prefix in ['a', 'b']
-    column_names = {v: i for i, v in enumerate(column_names)}
-    rgx = r'(?:^|[^_a-zA-Z0-9]){}\.([_a-zA-Z][_a-zA-Z0-9]*)'.format(prefix)
+    column_names_positions = dict()
+    for i in range(len(column_names)):
+        column_name = column_names[i]
+        if column_name not in column_names_positions: # Prioritize first seen.
+            column_names_positions[column_name] = i
+    rgx = r'(?:^|[^_a-zA-Z0-9.]){}\.([_a-zA-Z][_a-zA-Z0-9]*)'.format(prefix)
     matches = list(re.finditer(rgx, query_text))
     column_names_from_query = list(set([m.group(1) for m in matches]))
     for column_name in column_names_from_query:
-        zero_based_idx = column_names.get(column_name)
+        zero_based_idx = column_names_positions.get(column_name)
         if zero_based_idx is not None:
             dst_variables_map['{}.{}'.format(prefix, column_name)] = VariableInfo(initialize=True, index=zero_based_idx)
         else:
-            raise RbqlParsingError('Unable to find column "{}" in {} {}'.format(column_name, {'a': 'input', 'b': 'join'}[prefix], column_names_source))
-
-
-def map_variables_directly(query_text, column_names, dst_variables_map):
-    for idx, column_name in enumerate(column_names):
-        if re.match(r'^[_a-zA-Z][_a-zA-Z0-9]*$', column_name) is None:
-            raise RbqlIOHandlingError('Unable to use column name "{}" as RBQL/Python variable'.format(column_name))
-        if query_text.find(column_name) != -1:
-            dst_variables_map[column_name] = VariableInfo(initialize=True, index=idx)
-
-
-def ensure_no_ambiguous_variables(query_text, input_column_names, join_column_names):
-    join_column_names_set = set(join_column_names)
-    for column_name in input_column_names:
-        if column_name in join_column_names_set and query_text.find(column_name) != -1: # False positive is tolerable here
-            raise RbqlParsingError(ambiguous_error_msg.format(column_name))
-
+            raise RbqlParsingError('Unable to find column "{}" in {} header'.format(column_name, {'a': 'input', 'b': 'join'}[prefix]))
 
 
 def generate_common_init_code(query_text, variable_prefix):
     assert variable_prefix in ['a', 'b']
     result = list()
-    # TODO [PERFORMANCE] do not initialize RBQLRecord if we don't have `a.` or `a[` prefix in the query
     result.append('{} = RBQLRecord()'.format(variable_prefix))
     base_var = 'NR' if variable_prefix == 'a' else 'bNR'
     attr_var = '{}.NR'.format(variable_prefix)
@@ -1187,7 +1191,9 @@ def replace_star_vars_for_ast(rbql_expression):
 
 
 def translate_update_expression(update_expression, input_variables_map, string_literals):
-    assignment_looking_rgx = re.compile(r'(?:^|,) *(a[.#a-zA-Z0-9\[\]_]*) *=(?=[^=])')
+    # The below regex would still fail for query like `UPDATE a1 = foo(123, a2 = 20)` - but it is very uncommon to have a function argument like aN.
+    # Such failure should produce a syntax error during execution instead of producing wrong results.
+    assignment_looking_rgx = re.compile(r'(?:^|,) *(a[0-9\[.][.#a-zA-Z0-9\[\]_]*) *=(?=[^=])')
     update_expressions = []
     pos = 0
     first_assignment_error = 'Unable to parse "UPDATE" expression: the expression must start with assignment, but "{}" does not look like an assignable field name'.format(update_expression.split('=')[0].strip())
@@ -1269,11 +1275,12 @@ def separate_actions(statement_groups, rbql_expression):
     # make sure all rbql_expression was separated and SELECT or UPDATE is at the beginning
     rbql_expression = rbql_expression.strip(' ')
     result = dict()
-    # For now support no more than one query modifier per query
-    mobj = re.match('^(.*)  *[Ww][Ii][Tt][Hh] *\(([a-z]{4,20})\) *$', rbql_expression)
+    mobj = re.match('^(.*)  *[Ww][Ii][Tt][Hh] *\(([a-z, ]{4,20})\) *$', rbql_expression)
     if mobj is not None:
         rbql_expression = mobj.group(1)
-        result[WITH] = mobj.group(2)
+        result[WITH] = [v.strip() for v in mobj.group(2).split(',')]
+    else:
+        result[WITH] = []
     ordered_statements = locate_statements(statement_groups, rbql_expression)
     for i in range(len(ordered_statements)):
         statement_start = ordered_statements[i][0]
@@ -1417,7 +1424,7 @@ def remove_redundant_input_table_name(query_text):
     return query_text
 
 
-def select_output_header(input_header, join_header, query_column_infos):
+def select_output_header_best_effort(input_header, join_header, query_column_infos):
     if input_header is None:
         assert join_header is None
     query_has_star = False
@@ -1486,9 +1493,11 @@ def shallow_parse_input_query(query_text, input_iterator, tables_registry, query
     if input_iterator is None:
         raise RbqlParsingError('Queries without context-based input table must contain "FROM" statement')
 
-    if WITH in rb_actions:
-        input_iterator.handle_query_modifier(rb_actions[WITH])
-    input_variables_map = input_iterator.get_variables_map(query_text)
+    for modifier in rb_actions[WITH]:
+        # TODO handle_query_modifier should return true if handled so that we can error/warning if a modifier wasn't handled by either input_iterator or writer.
+        input_iterator.handle_query_modifier(modifier)
+        query_context.writer.handle_query_modifier(modifier)
+    input_variables_map = get_variables_map(query_text, 'a', input_iterator.get_header())
 
     if ORDER_BY in rb_actions and UPDATE in rb_actions:
         raise RbqlParsingError('"ORDER BY" is not allowed in "UPDATE" queries') # UT JSON
@@ -1504,15 +1513,15 @@ def shallow_parse_input_query(query_text, input_iterator, tables_registry, query
     join_variables_map = None
     join_header = None
     if JOIN in rb_actions:
-        rhs_table_id, variable_pairs = parse_join_expression(rb_actions[JOIN]['text'])
         if tables_registry is None:
             raise RbqlParsingError('JOIN operations are not supported by the application') # UT JSON
+        rhs_table_id, variable_pairs = parse_join_expression(rb_actions[JOIN]['text'])
         join_record_iterator = tables_registry.get_iterator_by_table_id(rhs_table_id, 'b')
         if join_record_iterator is None:
             raise RbqlParsingError('Unable to find join table: "{}"'.format(rhs_table_id)) # UT JSON CSV
-        if WITH in rb_actions:
-            join_record_iterator.handle_query_modifier(rb_actions[WITH])
-        join_variables_map = join_record_iterator.get_variables_map(query_text)
+        for modifier in rb_actions[WITH]:
+            join_record_iterator.handle_query_modifier(modifier)
+        join_variables_map = get_variables_map(query_text, 'b', join_record_iterator.get_header())
         join_header = join_record_iterator.get_header()
         if input_header is None and join_header is not None:
             raise RbqlIOHandlingError('Inconsistent modes: Input table doesn\'t have a header while the Join table has a header')
@@ -1555,8 +1564,11 @@ def shallow_parse_input_query(query_text, input_iterator, tables_registry, query
             select_expression = combine_string_literals(select_expression, string_literals)
             # We need to add string literals back in order to have relevant errors in case of exceptions during parsing
             combined_select_expression_for_ast = combine_string_literals(select_expression_for_ast, string_literals)
-            column_infos = ast_parse_select_expression_to_column_infos(combined_select_expression_for_ast)
-            output_header = select_output_header(input_header, join_header, column_infos)
+            column_infos = ast_parse_select_expression_to_column_infos_best_effort(combined_select_expression_for_ast)
+            # TODO consider adding a new flag - "write_header".
+            # It would decouple header guessing/generation from using it for output. we can actually apply it for csv only.
+            # CSV and JSON would have the same logic to generate the header without the input header hack for json version.
+            output_header = select_output_header_best_effort(input_header, join_header, column_infos)
         query_context.select_expression = select_expression
         query_context.writer.set_header(output_header)
 
@@ -1612,9 +1624,6 @@ def query(query_text, input_iterator, output_writer, output_warnings, join_table
 
 
 class RBQLInputIterator:
-    def get_variables_map(self, query_text):
-        raise NotImplementedError('Unable to call the interface method')
-
     def get_record(self):
         raise NotImplementedError('Unable to call the interface method')
 
@@ -1642,6 +1651,10 @@ class RBQLOutputWriter:
     def set_header(self, header):
         pass # Reimplement if your class can handle output headers in a meaningful way
 
+    def handle_query_modifier(self, modifier_name):
+        # Reimplement if you need to handle a boolean query modifier that can be used like this: `SELECT * WITH (modifiername)`
+        pass
+
 
 class RBQLTableRegistry:
     # table_id - external table identifier like filename for csv files or variable name for pandas dataframes.
@@ -1656,28 +1669,37 @@ class RBQLTableRegistry:
         return [] # Reimplement if your class can produce warnings
 
 
+def get_variables_map(query_text, table_variable_prefix, table_header):
+    # This function used to be a method of RBQLInputIterator but was refactored to be standalone.
+    # One thing to consider it that this function can be implemented in 2 ways:
+    # 1. Go from query to data - parse query for variable names and then initialize only those variables that are present in the query.
+    # 2. Go from header to query - iterate over column names (and check if they are present in the query for optimization) and initalize the corresponding variables (or just all variables from the header, named and unnamed).
+    # Approach #1 seem to be a more reliable because it gurantees that we just fail if we see a['unknown_column'] in the query instead of producing incorrect results. 
+    # If we go from header to query we just wouldn't initialize variable a['unknown_column'] and it would be None during execution, which can lead to incorrect results instead of an error.
+    variable_map = dict()
+    parse_basic_variables(query_text, table_variable_prefix, variable_map)
+    parse_array_variables(query_text, table_variable_prefix, variable_map)
+    if table_header is not None:
+        if len(table_header) == 1 and table_header[0] == table_variable_prefix:
+            # Handle monocolumn (or json which is also monocolumn) case.
+            variable_map[table_variable_prefix] = VariableInfo(initialize=True, index=0)
+        else:
+            # TODO check if table_header contains duplicate column names and add a warning if it does.
+            parse_dictionary_variables(query_text, table_variable_prefix, table_header, variable_map)
+            parse_attribute_variables(query_text, table_variable_prefix, table_header, variable_map)
+    return variable_map
+
+
 class TableIterator(RBQLInputIterator):
-    def __init__(self, table, column_names=None, normalize_column_names=True, variable_prefix='a'):
+    def __init__(self, table, column_names=None, variable_prefix='a'):
         self.table = table
         self.column_names = column_names
-        self.normalize_column_names = normalize_column_names
         self.variable_prefix = variable_prefix
         self.NR = 0
         self.fields_info = dict()
 
-    def get_variables_map(self, query_text):
-        variable_map = dict()
-        parse_basic_variables(query_text, self.variable_prefix, variable_map)
-        parse_array_variables(query_text, self.variable_prefix, variable_map)
-        if self.column_names is not None:
-            if len(self.table) and len(self.column_names) != len(self.table[0]):
-                raise RbqlIOHandlingError('List of column names and table records have different lengths')
-            if self.normalize_column_names:
-                parse_dictionary_variables(query_text, self.variable_prefix, self.column_names, variable_map)
-                parse_attribute_variables(query_text, self.variable_prefix, self.column_names, 'column names list', variable_map)
-            else:
-                map_variables_directly(query_text, self.column_names, variable_map)
-        return variable_map
+        if len(self.table) and self.column_names is not None and len(self.column_names) != len(self.table[0]):
+            raise RbqlIOHandlingError('List of column names and table records have different lengths')
 
     def get_record(self):
         if self.NR >= len(self.table):
@@ -1741,24 +1763,21 @@ ListTableInfo = namedtuple('ListTableInfo', ['table_id', 'table', 'column_names'
 
 class ListTableRegistry(RBQLTableRegistry):
     # Here table_infos is a list of ListTableInfo
-    def __init__(self, table_infos, normalize_column_names=True):
+    def __init__(self, table_infos):
         self.table_infos = table_infos
-        self.normalize_column_names = normalize_column_names
 
     def get_iterator_by_table_id(self, table_id, single_char_alias):
         for table_info in self.table_infos: 
             if table_info.table_id == table_id:
-                return TableIterator(table_info.table, table_info.column_names, self.normalize_column_names, single_char_alias)
+                return TableIterator(table_info.table, table_info.column_names, single_char_alias)
         return None
 
 
-# FIXME modify to support multipe join tables - accept ListTableRegistry. You can use multiple join tables per query via chain operator.
-def query_table(query_text, input_table, output_table, output_warnings, join_table=None, input_column_names=None, join_column_names=None, output_column_names=None, normalize_column_names=True, user_init_code=''):
-    if not normalize_column_names and input_column_names is not None and join_column_names is not None:
-        ensure_no_ambiguous_variables(query_text, input_column_names, join_column_names)
-    input_iterator = TableIterator(input_table, input_column_names, normalize_column_names)
+# TODO modify to support multipe join tables - accept ListTableRegistry. You can use multiple join tables per query via chain operator.
+def query_table(query_text, input_table, output_table, output_warnings, join_table=None, input_column_names=None, join_column_names=None, output_column_names=None, user_init_code=''):
+    input_iterator = TableIterator(input_table, input_column_names)
     output_writer = TableWriter(output_table)
-    join_tables_registry = None if join_table is None else ListTableRegistry([ListTableInfo('b', join_table, join_column_names), ListTableInfo('B', join_table, join_column_names)], normalize_column_names)
+    join_tables_registry = None if join_table is None else ListTableRegistry([ListTableInfo('b', join_table, join_column_names), ListTableInfo('B', join_table, join_column_names)])
     query(query_text, input_iterator, output_writer, output_warnings, join_tables_registry, user_init_code=user_init_code)
     if output_column_names is not None:
         assert len(output_column_names) == 0, '`output_column_names` param must be an empty list or None'

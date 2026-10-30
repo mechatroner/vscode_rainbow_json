@@ -33,6 +33,57 @@ let global_state = null;
 
 let last_rbql_queries = new Map(); // Query history does not replace this structure, it is also used to store partially entered queries for preview window switch.
 
+
+class AssertionError extends Error {}
+
+function assert(condition, message=null) {
+    if (!condition) {
+        if (!message) {
+            message = 'Assertion error';
+        }
+        throw new AssertionError(message);
+    }
+}
+
+let full_doc_parse(vscode_doc) {
+    const starts_with_square_bracket_rgx = /^\s*\[/;
+    //const ends_with_square_bracket_rgx = /\]\s*$/;
+    let doc_text = vscode_doc.getText();
+    if (starts_with_square_bracket_rgx.test(doc_text)) {
+        try {
+            let root_array = JSON.parse(doc_text);
+            assert(Array.isArray(root_array)); // This must be true because we parsed it and it starts with a square bracket.
+            return [true, root_array];
+        } catch (e) {
+            // Do nothing, not a single array, proceed with stream mode.
+        }
+    }
+    //FIXME impl
+}
+
+// The main purpose of this class is to map doc_id -> records list for RBQL preview.
+// It does full doc parsing which can be expensive so we only do this when RBQL interface requested and only if document was updated.
+class FullDocRecordCache {
+    constructor() {
+        this.doc_records = new Map();
+    }
+    get_document_records(vscode_doc) {
+        let file_name = vscode_doc.fileName;
+        if (!file_name) {
+            return;
+        }
+        let cache_entry = doc_records.get(file_name);
+        if (!cache_entry || cache_entry.version != vscode_doc.version) {
+            let [is_array, records] = full_doc_parse(vscode_doc);
+            cache_entry = {'version': vscode_doc.version, 'is_array': is_array, 'records': records};
+            doc_records.set(file_name, cache_entry);
+        }
+        return cache_entry.records;
+    }
+}
+
+let rbql_preview_records_cache = new FullDocRecordCache();
+
 function extend_range_by_margin(vscode, doc, range, margin) {
     let begin_line = Math.max(0, range.start.line - margin);
     let end_line_inclusive = Math.min(doc.lineCount - 1, range.end.line + margin);
@@ -188,11 +239,6 @@ class RainbowTokenProvider {
     constructor() {
     }
 
-    /**
-     * @param {vscode.TextDocument} document
-     * @param {vscode.Range} range
-     * @param {vscode.CancellationToken} _token
-     */
     async provideDocumentRangeSemanticTokens(document, range, _token) {
         // TODO re-evaluate error-handling strategy to make sure it is sensible.
         if (document.languageId != "json" && document.languageId != "jsonl") {
@@ -527,6 +573,7 @@ async function edit_rbql(integration_test_options=null) {
         client_html_template = await load_resource_file_universal('rbql_client.html');
     }
     rbql_preview_panel.webview.html = adjust_webview_paths(rbql_preview_panel, client_html_template, ['rbql_client.js']);
+    // FIXME at this point we need to parse the whole doc so that we can provide records when requested. We can also reparse it on every edit.
     rbql_preview_panel.webview.onDidReceiveMessage(function(message) { handle_rbql_client_message(rbql_preview_panel.webview, message, integration_test_options); });
 }
 
