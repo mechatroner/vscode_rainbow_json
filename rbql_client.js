@@ -54,18 +54,10 @@ function add_header_cell_with_text(cell_text, dst_row_elem) {
 }
 
 
-function add_header_row(max_num_columns, with_headers, table) {
+function add_header_row(table) {
     let row_elem = document.createElement('tr');
     add_header_cell_with_text('NR', row_elem);
-    let named_header_vars = [];
-    for (let i = 0; i < max_num_columns; i++) {
-        let cell_text = `a${i + 1}`;
-        if (i < named_header_vars.length) {
-            let var_column = named_header_vars[i].dot_var ? named_header_vars[i].dot_var : named_header_vars[i].single_q_var;
-            cell_text += '\r\n' + var_column;
-        }
-        add_header_cell_with_text(cell_text, row_elem);
-    }
+    add_header_cell_with_text('a', row_elem);
     table.appendChild(row_elem);
 }
 
@@ -114,7 +106,6 @@ function make_preview_table() {
     if (!last_preview_message)
         return;
     let records = last_preview_message.preview_records;
-    console.log("records.length:" + records.length); //FOR_DEBUG
     let actual_start_record = last_preview_message.actual_start_record;
     let preview_error = last_preview_message.preview_sampling_error;
 
@@ -135,9 +126,9 @@ function make_preview_table() {
         return;
     }
 
-    let with_headers = document.getElementById('with_headers').checked;
+    //let with_headers = document.getElementById('with_headers').checked;
     let max_num_columns = get_max_num_columns(records, with_headers);
-    add_header_row(max_num_columns, with_headers, table);
+    add_header_row(table);
     for (var r = 0; r < records.length; r++) {
         let row = document.createElement('tr');
         let NR = r + actual_start_record + 1;
@@ -147,9 +138,7 @@ function make_preview_table() {
                 continue;
         }
         row.appendChild(make_nr_cell(String(NR)));
-        for (var nf = 0; nf < records[r].length; nf++) {
-            row.appendChild(make_data_cell(JSON.stringify(records[r][nf])));
-        }
+        row.appendChild(make_data_cell(JSON.stringify(records[r])));
         table.appendChild(row);
     }
 }

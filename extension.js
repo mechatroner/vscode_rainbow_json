@@ -452,12 +452,8 @@ function adjust_webview_paths(preview_panel, client_html, paths_list) {
 
 function sample_preview_records_from_context(rbql_context, dst_message, preview_window_size) {
     let records = rbql_preview_records_cache.get_document_records(rbql_context.input_document);
-    console.log("records.length:" + records.length); //FOR_DEBUG
-    console.log("rbql_context.requested_start_record:" + rbql_context.requested_start_record); //FOR_DEBUG
     rbql_context.requested_start_record = Math.max(0, Math.min(rbql_context.requested_start_record, records.length - preview_window_size));
-    console.log("rbql_context.requested_start_record:" + rbql_context.requested_start_record); //FOR_DEBUG
     let preview_records = records.slice(rbql_context.requested_start_record, rbql_context.requested_start_record + preview_window_size);
-    console.log("preview_records.length:" + preview_records.length); //FOR_DEBUG
     dst_message.preview_records = preview_records;
     dst_message.actual_start_record = rbql_context.requested_start_record;
 }
