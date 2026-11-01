@@ -72,10 +72,11 @@ function add_header_row(max_num_columns, with_headers, table) {
 
 function make_data_cell(cell_text) {
     let cell = document.createElement('td');
-    const trim_marker = '###UI_STRING_TRIM_MARKER###';
+    let max_length = 1000;
     let add_ellipsis = false;
-    if (cell_text.endsWith(trim_marker)) {
-        cell_text = cell_text.substr(0, cell_text.length - trim_marker.length);
+    if (cell_text.length > max_length) {
+        cell_text = cell_text.substr(0, max_length);
+         // FIXME test elipsis logic
         add_ellipsis = true;
     }
     let field_rfc_lines = cell_text.split('\n');
@@ -113,6 +114,7 @@ function make_preview_table() {
     if (!last_preview_message)
         return;
     let records = last_preview_message.preview_records;
+    console.log("records.length:" + records.length); //FOR_DEBUG
     let actual_start_record = last_preview_message.actual_start_record;
     let preview_error = last_preview_message.preview_sampling_error;
 
@@ -146,7 +148,7 @@ function make_preview_table() {
         }
         row.appendChild(make_nr_cell(String(NR)));
         for (var nf = 0; nf < records[r].length; nf++) {
-            row.appendChild(make_data_cell(records[r][nf]));
+            row.appendChild(make_data_cell(JSON.stringify(records[r][nf])));
         }
         table.appendChild(row);
     }

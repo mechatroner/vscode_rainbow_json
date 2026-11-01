@@ -1,5 +1,11 @@
+const path = require('path');
+const fs = require('fs');
+const os = require('os');
+const child_process = require('child_process');
+
 const vscode = require('vscode');
-const json_parse = require('./json_parse')
+
+const json_parse = require('./json_parse');
 const rainbow_utils = require('./rainbow_utils');
 const rbql_json = require('./rbql_core/rbql-js/rbql_json.js');
 
@@ -19,6 +25,7 @@ const tokens_legend = new vscode.SemanticTokensLegend(all_token_types);
 
 const max_num_keys_to_highlight = rainbow_token_types.length;
 const scratch_buf_marker = 'vscode_rbql_scratch';
+let rbql_context = null;
 
 // TODO add proper readme with a screenshot.
 
@@ -26,7 +33,7 @@ const scratch_buf_marker = 'vscode_rbql_scratch';
 // TODO (post MVP): use vscode channel for logging like in rainbow csv instead of console.log
 
 
-const preview_window_size = 100;
+const preview_window_size = 20;
 const is_web_ext = true; // FIXME get rid of this since it is always True.
 
 // This `global_state` is persistent across VSCode restarts.
@@ -55,8 +62,8 @@ function assert(condition, message=null) {
 }
 
 
-let parse_json_string_as_stream(text) {
-    let balancing_iterator = new rbql_json.BalancingIterator(text);
+function parse_json_string_as_stream(text) {
+    let balancing_iterator = new rbql_json.BalancingIterator();
     balancing_iterator.add_fragment(text);
     let records = [];
     while (!balancing_iterator.empty()) {
@@ -67,7 +74,7 @@ let parse_json_string_as_stream(text) {
 }
 
 
-let full_doc_parse(vscode_doc) {
+function full_doc_parse(vscode_doc) {
     const starts_with_square_bracket_rgx = /^\s*\[/;
     //const ends_with_square_bracket_rgx = /\]\s*$/;
     let doc_text = vscode_doc.getText();
@@ -96,11 +103,11 @@ class FullDocRecordCache {
         if (!file_name) {
             return;
         }
-        let cache_entry = doc_records.get(file_name);
+        let cache_entry = this.doc_records.get(file_name);
         if (!cache_entry || cache_entry.version != vscode_doc.version) {
             let [is_array, records] = full_doc_parse(vscode_doc);
             cache_entry = {'version': vscode_doc.version, 'is_array': is_array, 'records': records};
-            doc_records.set(file_name, cache_entry);
+            this.doc_records.set(file_name, cache_entry);
         }
         return cache_entry.records;
     }
@@ -443,9 +450,15 @@ function adjust_webview_paths(preview_panel, client_html, paths_list) {
 }
 
 
-function sample_preview_records_from_context(rbql_context, dst_message, preview_window_size, cached_table_parse_result) {
-    rbql_context.requested_start_record = Math.max(rbql_context.requested_start_record, 0);
-    dst_message.preview_records = [['{"foo": "bar"}'], ['{"hello": "world"}'], ['{"hello": "world"}']]; // FIXME
+function sample_preview_records_from_context(rbql_context, dst_message, preview_window_size) {
+    let records = rbql_preview_records_cache.get_document_records(rbql_context.input_document);
+    console.log("records.length:" + records.length); //FOR_DEBUG
+    console.log("rbql_context.requested_start_record:" + rbql_context.requested_start_record); //FOR_DEBUG
+    rbql_context.requested_start_record = Math.max(0, Math.min(rbql_context.requested_start_record, records.length - preview_window_size));
+    console.log("rbql_context.requested_start_record:" + rbql_context.requested_start_record); //FOR_DEBUG
+    let preview_records = records.slice(rbql_context.requested_start_record, rbql_context.requested_start_record + preview_window_size);
+    console.log("preview_records.length:" + preview_records.length); //FOR_DEBUG
+    dst_message.preview_records = preview_records;
     dst_message.actual_start_record = rbql_context.requested_start_record;
 }
 
@@ -463,6 +476,45 @@ function get_from_global_state(key, default_value) {
             return value;
     }
     return default_value;
+}
+
+
+async function save_to_global_state(key, value) {
+    // Save KV pair to the "global state" which is persistent across VSCode restarts.
+    if (global_state && key) {
+        await global_state.update(key, value);
+        return true;
+    }
+    return false;
+}
+
+
+async function update_query_history(query) {
+    let history_list = get_from_global_state('rbql_query_history', []);
+    let old_index = history_list.indexOf(query);
+    if (old_index != -1) {
+        history_list.splice(old_index, 1);
+    } else if (history_list.length >= 20) {
+        history_list.splice(0, 1);
+    }
+    history_list.push(query);
+    await save_to_global_state('rbql_query_history', history_list);
+}
+
+
+async function run_rbql_query(webview, input_path, csv_encoding, backend_language, rbql_query, output_dialect, with_headers, integration_test_options=null) {
+    //FIXME implement
+}
+
+
+async function send_report_to_webview(webview, error_type, error_msg) {
+    let report_msg = {'msg_type': 'rbql_report'};
+    if (error_type)
+        report_msg["error_type"] = error_type;
+    if (error_msg)
+        report_msg["error_msg"] = error_msg;
+    _unit_test_last_rbql_report = report_msg;
+    await webview.postMessage(report_msg);
 }
 
 
@@ -532,10 +584,10 @@ async function handle_rbql_client_message(webview, message, integration_test_opt
         let default_content = '';
         if (backend_language == 'js') {
             udf_file_path = path.join(os.homedir(), '.rbql_init_source.js');
-            default_content = ll_rainbow_utils().get_default_js_udf_content();
+            default_content = rainbow_utils.get_default_js_udf_content();
         } else {
             udf_file_path = path.join(os.homedir(), '.rbql_init_source.py');
-            default_content = ll_rainbow_utils().get_default_python_udf_content();
+            default_content = rainbow_utils.get_default_python_udf_content();
         }
         if (!fs.existsSync(udf_file_path)) {
             fs.writeFileSync(udf_file_path, default_content);
@@ -589,10 +641,11 @@ async function edit_rbql(integration_test_options=null) {
 
     rbql_context = {
         "input_document": active_doc,
-        "input_document_path": input_path
+        "input_document_path": input_path,
+        "requested_start_record": 0
     };
 
-    rbql_preview_panel = vscode.window.createWebviewPanel('rbql-console', 'RBQL Console', vscode.ViewColumn.Active, {enableScripts: true});
+    let rbql_preview_panel = vscode.window.createWebviewPanel('rbql-console', 'RBQL Console', vscode.ViewColumn.Active, {enableScripts: true});
     if (!client_html_template) {
         client_html_template = await load_resource_file_universal('rbql_client.html');
     }
@@ -659,4 +712,4 @@ function deactivate() {}
 module.exports = {
     activate,
     deactivate
-}
+};
