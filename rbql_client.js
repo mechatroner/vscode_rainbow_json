@@ -111,11 +111,6 @@ function make_preview_table() {
     for (var r = 0; r < records.length; r++) {
         let row = document.createElement('tr');
         let NR = r + actual_start_record + 1;
-        if (pretty_print) {
-            NR -= 1;
-            if (NR == 0)
-                continue;
-        }
         row.appendChild(make_nr_cell(String(NR)));
         row.appendChild(make_data_cell(JSON.stringify(records[r])));
         table.appendChild(row);
@@ -231,11 +226,13 @@ function handle_message(msg_event) {
             query_history = message['query_history'];
         }
         is_web_ext = message['is_web_ext'];
-        let pretty_print = message['pretty_print'];
+        let pretty_print = message['pretty_print']; // FIXME pass from global state preferences
+        let is_array = message['is_array'];
         last_preview_message = message;
         document.getElementById("select_backend_language").value = message['backend_language'];
         assign_backend_lang_selection_title();
         document.getElementById("pretty_print").checked = pretty_print;
+        document.getElementById("wrap_output").checked = is_array; // By default wrap output if we unwrap input (which we do for arrays).
         make_preview_table();
 
         let integration_test_query = message['integration_test_query'];

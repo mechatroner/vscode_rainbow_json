@@ -109,7 +109,7 @@ class FullDocRecordCache {
             cache_entry = {'version': vscode_doc.version, 'is_array': is_array, 'records': records};
             this.doc_records.set(file_name, cache_entry);
         }
-        return cache_entry.records;
+        return [cache_entry.records, cache_entry.is_array];
     }
 }
 
@@ -451,9 +451,10 @@ function adjust_webview_paths(preview_panel, client_html, paths_list) {
 
 
 function sample_preview_records_from_context(rbql_context, dst_message, preview_window_size) {
-    let records = rbql_preview_records_cache.get_document_records(rbql_context.input_document);
+    let [records, is_array] = rbql_preview_records_cache.get_document_records(rbql_context.input_document);
     rbql_context.requested_start_record = Math.max(0, Math.min(rbql_context.requested_start_record, records.length - preview_window_size));
     let preview_records = records.slice(rbql_context.requested_start_record, rbql_context.requested_start_record + preview_window_size);
+    dst_message.is_array = is_array;
     dst_message.preview_records = preview_records;
     dst_message.actual_start_record = rbql_context.requested_start_record;
 }
