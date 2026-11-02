@@ -31,6 +31,7 @@ th {
     top: 0;
     background-color: var(--vscode-editor-background);
     white-space: pre;
+    text-align: left;
 }
 
 td {
@@ -370,34 +371,18 @@ table th:first-child, table td:first-child {
     </div>
     <div id="query_group" style="margin-top: 10px;">
         <!-- Do not remove the weird comments below, we need them to avoid spaces between inline elements, see https://css-tricks.com/fighting-the-space-between-inline-block-elements/ -->
-        <input type="text" id="rbql_input" placeholder="Example: SELECT a1, a2 WHERE a2 != 'foobar' ORDER BY a1 LIMIT 10" autofocus><!--
+        <input type="text" id="rbql_input" placeholder="Example: SELECT a.foo, a.bar WHERE a.bar != 'foobar' ORDER BY a.foo LIMIT 10" autofocus><!--
         --><button id="toggle_history_btn" title="Query history">&#9650;</button><!--
         --><button id="rbql_run_btn" title="Run query and open result set in a new tab">Run</button><!--
         --><button id="help_btn" title="Help">?</button>
     </div>
     <h3 style="margin-bottom: 6px; margin-top: 10px;">&#9881; Query settings</h3>
     <div style="margin-left: 30px;">
-        <div id="with_headers_section">
-            <label style="word-wrap:break-word" title="Indicate that the input (and join) table has header in the first line"><input class="checkbox_input" id="with_headers" type="checkbox"/>Input table has header</label>
+        <div id="pretty_print_section">
+            <label style="word-wrap:break-word" title="Adds extra whitespaces for each nested level"><input class="checkbox_input" id="pretty_print" type="checkbox"/>Pretty print</label>
         </div>
-        <div>
-            <div>
-              <span class="select_info">Output format</span>
-            </div>
-            <select class="select_input" id="select_output_format" title="Output table format">
-              <option class="select_input" value="input">Same as input (Default)</option>
-              <option class="select_input" value="csv">CSV</option>
-              <option class="select_input" value="tsv">TSV</option>
-            </select>
-        </div>
-        <div>
-            <div>
-              <span class="select_info">Encoding</span>
-            </div>
-            <select class="select_input" id="select_encoding" title="Input and output encoding">
-              <option class="select_input" value="utf-8">UTF-8</option>
-              <option class="select_input" value="latin-1">Binary/Latin-1</option>
-            </select>
+        <div id="wrap_output_section">
+            <label style="word-wrap:break-word" title="Wraps output objects in json array"><input class="checkbox_input" id="wrap_output" type="checkbox"/>Wrap in array</label>
         </div>
         <div>
             <div>

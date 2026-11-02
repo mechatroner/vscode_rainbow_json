@@ -12,8 +12,6 @@ var last_preview_message = null;
 
 var adjust_join_table_header_callback = null;
 
-var global_header = null;
-
 var is_web_ext = null;
 
 function report_backend_language_change() {
@@ -23,27 +21,10 @@ function report_backend_language_change() {
 }
 
 
-function report_encoding_change() {
-    let encoding = document.getElementById('select_encoding').value;
-    vscode.postMessage({'msg_type': 'global_param_change', 'key': 'rbql_encoding', 'value': encoding});
-}
-
-
 function remove_children(root_node) {
     while (root_node.firstChild) {
         root_node.removeChild(root_node.firstChild);
     }
-}
-
-
-function get_max_num_columns(records, with_headers) {
-    let max_num_columns = 0;
-    for (let r = 0; r < records.length; r++) {
-        max_num_columns = Math.max(max_num_columns, records[r].length);
-    }
-    if (with_headers && global_header && global_header.length)
-        max_num_columns = Math.max(max_num_columns, global_header.length);
-    return max_num_columns;
 }
 
 
@@ -126,13 +107,11 @@ function make_preview_table() {
         return;
     }
 
-    //let with_headers = document.getElementById('with_headers').checked;
-    let max_num_columns = get_max_num_columns(records, with_headers);
     add_header_row(table);
     for (var r = 0; r < records.length; r++) {
         let row = document.createElement('tr');
         let NR = r + actual_start_record + 1;
-        if (with_headers) {
+        if (pretty_print) {
             NR -= 1;
             if (NR == 0)
                 continue;
@@ -166,21 +145,6 @@ function preview_begin() {
 
 function preview_end() {
     navigate_preview('end');
-}
-
-
-function fetch_join_header_callback(join_table_id, adjust_join_table_headers) {
-    adjust_join_table_header_callback = adjust_join_table_headers;
-    let encoding = document.getElementById('select_encoding').value;
-    vscode.postMessage({'msg_type': 'fetch_table_header', 'table_id': join_table_id, 'encoding': encoding});
-}
-
-
-function process_with_headers_change() {
-    let with_headers = document.getElementById('with_headers').checked;
-    vscode.postMessage({'msg_type': 'with_headers_change', 'with_headers': with_headers}); // We need to send it to remember preview state
-    let header = with_headers ? global_header : null;
-    make_preview_table();
 }
 
 
@@ -245,10 +209,9 @@ function start_rbql() {
     rbql_running = true;
     document.getElementById('rbql_run_btn').textContent = "\u231B";
     let backend_language = document.getElementById('select_backend_language').value;
-    let output_format = document.getElementById('select_output_format').value;
-    let encoding = document.getElementById('select_encoding').value;
-    let with_headers = document.getElementById('with_headers').checked;
-    vscode.postMessage({'msg_type': 'run', 'query': rbql_text, 'backend_language': backend_language, 'output_dialect': output_format, 'encoding': encoding, 'with_headers': with_headers});
+    let pretty_print = document.getElementById('pretty_print').checked;
+    let wrap_output = document.getElementById('wrap_output').checked;
+    vscode.postMessage({'msg_type': 'run', 'query': rbql_text, 'backend_language': backend_language, 'wrap_output': wrap_output, 'pretty_print': pretty_print});
 }
 
 
@@ -267,39 +230,29 @@ function handle_message(msg_event) {
         if (message.hasOwnProperty('query_history')) {
             query_history = message['query_history'];
         }
-        global_header = message['header_for_ui'];
         is_web_ext = message['is_web_ext'];
-        let with_headers = message['with_headers'];
-        let header = with_headers ? global_header : null;
+        let pretty_print = message['pretty_print'];
         last_preview_message = message;
         document.getElementById("select_backend_language").value = message['backend_language'];
         assign_backend_lang_selection_title();
-        document.getElementById("select_encoding").value = message['encoding'];
-        document.getElementById("with_headers").checked = with_headers;
+        document.getElementById("pretty_print").checked = pretty_print;
         make_preview_table();
 
         let integration_test_query = message['integration_test_query'];
         let integration_test_language = message['integration_test_language'];
         let integration_test_delay = message.hasOwnProperty('integration_test_delay') ? message.integration_test_delay : 2000;
         if (integration_test_query && integration_test_language) {
-            if (message['integration_test_with_headers']) {
-                document.getElementById("with_headers").checked = true;
+            if (message['integration_test_pretty_print']) {
+                document.getElementById("pretty_print").checked = true;
             } else {
-                document.getElementById("with_headers").checked = false;
+                document.getElementById("pretty_print").checked = false;
             }
-            process_with_headers_change();
             document.getElementById("select_backend_language").value = integration_test_language;
             assign_backend_lang_selection_title();
             document.getElementById('rbql_input').value = integration_test_query;
             setTimeout(function() {
                 start_rbql();
             }, integration_test_delay);
-        }
-    }
-
-    if (message_type == 'fetch_table_header_response') {
-        if (adjust_join_table_header_callback && message['header_for_ui']) {
-            adjust_join_table_header_callback(message['header_for_ui']);
         }
     }
 
@@ -367,8 +320,6 @@ function main() {
 
     document.getElementById("rbql_run_btn").addEventListener("click", start_rbql);
     document.getElementById("select_backend_language").addEventListener("change", report_backend_language_change);
-    document.getElementById("select_encoding").addEventListener("change", report_encoding_change);
-    document.getElementById("with_headers").addEventListener("click", process_with_headers_change);
     document.getElementById("ack_error").addEventListener("click", hide_error_msg);
     document.getElementById("toggle_history_btn").addEventListener("click", toggle_history);
     document.getElementById("clear_history_btn").addEventListener("click", clear_history);
