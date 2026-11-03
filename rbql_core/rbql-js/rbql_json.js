@@ -509,6 +509,7 @@ class JsonIterator extends rbql.RBQLInputIterator {
     }
 }
 
+
 async function query_json(query_text, input_path, output_path, output_warnings, params) {
     let user_init_code = params.hasOwnProperty('user_init_code') ? params['user_init_code'] : '';
     let pretty_indent = params.hasOwnProperty('pretty_indent') ? params['pretty_indent'] : null;
@@ -538,3 +539,4 @@ module.exports.JsonWriter = JsonWriter;
 module.exports.JsonIterator = JsonIterator;
 module.exports.BalancingIterator = BalancingIterator;
 module.exports.query_json = query_json;
+module.exports.exception_to_error_info = rbql.exception_to_error_info;

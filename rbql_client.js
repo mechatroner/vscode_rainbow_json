@@ -14,6 +14,8 @@ var adjust_join_table_header_callback = null;
 
 var is_web_ext = null;
 
+var unwrap_input = false; // TODO make this flag a UI checkbox that re-draws preview on click
+
 function report_backend_language_change() {
     let backend_language = document.getElementById('select_backend_language').value;
     vscode.postMessage({'msg_type': 'global_param_change', 'key': 'rbql_backend_language', 'value': backend_language});
@@ -206,7 +208,7 @@ function start_rbql() {
     let backend_language = document.getElementById('select_backend_language').value;
     let pretty_print = document.getElementById('pretty_print').checked;
     let wrap_output = document.getElementById('wrap_output').checked;
-    vscode.postMessage({'msg_type': 'run', 'query': rbql_text, 'backend_language': backend_language, 'wrap_output': wrap_output, 'pretty_print': pretty_print});
+    vscode.postMessage({'msg_type': 'run', 'query': rbql_text, 'backend_language': backend_language, 'unwrap_input': unwrap_input, 'wrap_output': wrap_output, 'pretty_print': pretty_print});
 }
 
 
@@ -232,6 +234,7 @@ function handle_message(msg_event) {
         document.getElementById("select_backend_language").value = message['backend_language'];
         assign_backend_lang_selection_title();
         document.getElementById("pretty_print").checked = pretty_print;
+        unwrap_input = is_array;
         document.getElementById("wrap_output").checked = is_array; // By default wrap output if we unwrap input (which we do for arrays).
         make_preview_table();
 

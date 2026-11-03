@@ -2,12 +2,14 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const child_process = require('child_process');
+const stream = require('stream');
 
 const vscode = require('vscode');
 
 const json_parse = require('./json_parse');
 const rainbow_utils = require('./rainbow_utils');
 const rbql_json = require('./rbql_core/rbql-js/rbql_json.js');
+const rbql = require('./rbql_core/rbql-js/rbql.js');
 
 /** @type {vscode.Disposable|null} */
 let rainbow_token_event = null;
@@ -27,6 +29,9 @@ const max_num_keys_to_highlight = rainbow_token_types.length;
 const scratch_buf_marker = 'vscode_rbql_scratch';
 let rbql_context = null;
 
+var _unit_test_last_warnings = null; // For unit tests only.
+var _unit_test_last_rbql_report = null; // For unit tests only.
+
 // TODO add proper readme with a screenshot.
 
 // TODO (post MVP): add option to highlight by last key path only.
@@ -41,6 +46,14 @@ let global_state = null;
 
 let last_rbql_queries = new Map(); // Query history does not replace this structure, it is also used to store partially entered queries for preview window switch.
 
+var debug_log_output_channel = null;
+
+let extension_context = {
+    autodetection_temporarily_disabled_for_rbql: false,
+    dynamic_dialect_for_next_request: null,
+    logging_enabled: false,
+    logging_next_context_id: 1
+};
 
 class RainbowJsonError extends Error {
     constructor(message) {
@@ -58,6 +71,51 @@ function assert(condition, message=null) {
             message = 'Assertion error';
         }
         throw new AssertionError(message);
+    }
+}
+
+
+class StackContextLogWrapper {
+    // Use class instead of pure function to avoid passing context name and checking if logging is enabled in the config in each call.
+    constructor(context_name, caller_context_id=null) {
+        this.context_name = context_name;
+        this.logging_enabled = extension_context.logging_enabled;
+        this.context_id = caller_context_id === null ? extension_context.logging_next_context_id : caller_context_id;
+        extension_context.logging_next_context_id += 1;
+    }
+
+    log_doc_event(event_name, vscode_doc=null) {
+        if (!this.logging_enabled)
+            return;
+        try {
+            let full_event = `CID:${this.context_id}, ${this.context_name}:${event_name}`;
+            if (vscode_doc) {
+                full_event = `${full_event}, doc_lang:${vscode_doc.languageId}`;
+                if (vscode_doc.uri) {
+                    let str_uri = vscode_doc.uri.toString(/*skipEncoding=*/true);
+                    full_event = `${full_event}, doc_uri:${str_uri}`;
+                }
+            } else {
+                full_event = `${full_event}, no_doc:1`;
+            }
+            // Use "info" level because logging is flag-guarded by the extension-level setting.
+            debug_log_output_channel.info(full_event);
+        } catch (_error) {
+            console.error(`Rainbow JSON: Unexpected log failure. ${this.context_name}:${this.event_name}`);
+            return;
+        }
+    }
+
+    log_simple_event(event_name) {
+        if (!this.logging_enabled)
+            return;
+        try {
+            let full_event = `CID:${this.context_id}, ${this.context_name}:${event_name}`;
+            debug_log_output_channel.info(full_event);
+        } catch (_error) {
+            console.error(`Rainbow JSON: Unexpected log failure. ${this.context_name}:${this.event_name}`);
+            return;
+        }
     }
 }
 
@@ -499,8 +557,113 @@ async function update_query_history(query) {
 }
 
 
-async function run_rbql_query(webview, input_path, csv_encoding, backend_language, rbql_query, output_dialect, with_headers, integration_test_options=null) {
-    //FIXME implement
+
+// FIXME try to use the standard stream.writable instead.
+function PseudoWritable() {
+    this.data_chunks = [];
+    this.encoding = 'utf-8';
+    this.unused_error_callback = null;
+
+    this.setDefaultEncoding = function(encoding) {  // FIXME do we need this?
+        this.encoding = encoding;
+    };
+
+    this.write = function(data) {
+        this.data_chunks.push(data);
+    };
+
+    this.get_data = function() {
+        return Buffer.from(this.data_chunks.join(''), this.encoding);
+    };
+
+    this.get_text = function() {
+        return this.data_chunks.join('');
+    };
+
+    this.on = function(msg_type, _unused_error_callback) {
+        assert(msg_type === 'error');
+    };
+}
+
+
+// FIXME sync from RBQL main to get some bugfixes.
+async function rbql_query_web(query_text, input_document, unwrap_input, wrap_output, pretty_print, output_warnings) {
+    let user_init_code = '';
+    // FIXME support user_init_code
+    //if (fs.existsSync(default_init_source_path)) {
+    //    let default_init_source_path = path.join(os.homedir(), '.rbql_init_source.js');
+    //    user_init_code = read_user_init_code(default_init_source_path);
+    //}
+    let join_tables_registry = null;
+    let output_stream = new PseudoWritable();
+    let input_stream = stream.Readable.from([input_document.getText()]);
+    let input_iterator = new rbql_json.JsonIterator(input_stream, unwrap_input);
+    let close_output_on_finish = false;
+    let pretty_indent = pretty_print ? 4 : null;
+    let output_writer = new rbql_json.JsonWriter(output_stream, close_output_on_finish, 'utf-8', '\n', pretty_indent, wrap_output);
+    await rbql.query(query_text, input_iterator, output_writer, output_warnings, join_tables_registry, user_init_code);
+    return output_stream.get_text();
+}
+
+
+async function show_warnings(warnings) {
+    _unit_test_last_warnings = [];
+    if (!warnings || !warnings.length)
+        return;
+    var active_window = vscode.window;
+    if (!active_window)
+        return null;
+    for (var i = 0; i < warnings.length; i++) {
+        // Do not "await" warning messages because the promise gets resolved only on warning dismissal.
+        active_window.showWarningMessage('RBQL warning: ' + warnings[i]);
+    }
+    _unit_test_last_warnings = warnings;
+}
+
+
+async function handle_rbql_result_file_web(text_doc, warnings) {
+    try {
+        await vscode.window.showTextDocument(text_doc);
+    } catch (_error) {
+        show_single_line_error('Unable to open RBQL result document');
+        return;
+    }
+    await show_warnings(warnings);
+}
+
+
+async function run_rbql_query(webview, input_path, backend_language, rbql_query, unwrap_input, wrap_output, pretty_print, integration_test_options=null) {
+    let log_wrapper = new StackContextLogWrapper('run-rbql-query');
+    log_wrapper.log_simple_event('start');
+    last_rbql_queries.set(file_path_to_query_key(input_path), rbql_query);
+
+    //let output_path = is_web_ext ? null : path.join(get_dst_table_dir(input_path), get_dst_table_name(input_path, output_delim));
+
+    if (backend_language == 'js') {
+        log_wrapper.log_simple_event('using js backend');
+        let warnings = [];
+        let result_doc = null;
+        try {
+            log_wrapper.log_simple_event('using web mode');
+            let result_content = await rbql_query_web(rbql_query, rbql_context.input_document, unwrap_input, wrap_output, pretty_print, warnings);
+            let output_doc_cfg = {content: result_content, language: 'json'}; // FIXME make sure language param is correct here.
+            extension_context.autodetection_temporarily_disabled_for_rbql = true;
+            result_doc = await vscode.workspace.openTextDocument(output_doc_cfg);
+            await send_report_to_webview(webview, null, null);
+            await handle_rbql_result_file_web(result_doc, warnings);
+            extension_context.dynamic_dialect_for_next_request = null;
+            extension_context.autodetection_temporarily_disabled_for_rbql = false;
+            log_wrapper.log_simple_event('finished OK');
+        } catch (e) {
+            extension_context.autodetection_temporarily_disabled_for_rbql = false;
+            let [error_type, error_msg] = rbql_json.exception_to_error_info(e);
+            log_wrapper.log_simple_event('finished with error');
+            await send_report_to_webview(webview, error_type, error_msg);
+            return;
+        }
+    } else {
+        // FIXME support python backend.
+    }
 }
 
 
@@ -564,11 +727,11 @@ async function handle_rbql_client_message(webview, message, integration_test_opt
     if (message_type == 'run') {
         let rbql_query = message['query'];
         let backend_language = message['backend_language'];
-        let encoding = message['encoding'];
-        let output_dialect = message['output_dialect'];
-        let with_headers = message['with_headers'];
+        let unwrap_input = message['unwrap_input'];
+        let wrap_output = message['wrap_output'];
+        let pretty_print = message['pretty_print'];
         await update_query_history(rbql_query);
-        await run_rbql_query(webview, rbql_context.input_document_path, encoding, backend_language, rbql_query, output_dialect, with_headers, integration_test_options);
+        await run_rbql_query(webview, rbql_context.input_document_path, backend_language, rbql_query, unwrap_input, wrap_output, pretty_print, integration_test_options);
     }
 
     if (message_type == 'edit_udf') {
@@ -685,6 +848,12 @@ async function activate(context) {
         }
         toggle_key_highlight(document, key_path);
     });
+
+    try {
+        debug_log_output_channel = vscode.window.createOutputChannel('rainbow_json_debug_channel', {log: true});
+    } catch (_error) {
+        console.error('Rainbow JSON: Failed to create output log channel');
+    }
 
     // TODO: enable this post-MVP. Or figure out if you can use decorations to hide the bracket colors.
     // for (let language_id of ["json", "jsonl"]) {
