@@ -656,7 +656,7 @@ async function run_rbql_query(webview, input_path, backend_language, rbql_query,
             log_wrapper.log_simple_event('finished OK');
         } catch (e) {
             extension_context.autodetection_temporarily_disabled_for_rbql = false;
-            let [error_type, error_msg] = rbql_json.exception_to_error_info(e);
+            let [error_type, error_msg] = rbql.exception_to_error_info(e);
             log_wrapper.log_simple_event('finished with error');
             await send_report_to_webview(webview, error_type, error_msg);
             return;
