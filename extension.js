@@ -597,7 +597,7 @@ async function rbql_query_web(query_text, input_document, unwrap_input, wrap_out
     let join_tables_registry = null;
     let output_stream = new PseudoWritable();
     let input_stream = stream.Readable.from([input_document.getText()]);
-    let input_iterator = new rbql_json.JsonIterator(input_stream, unwrap_input);
+    let input_iterator = new rbql_json.JsonIterator(input_stream, unwrap_input, /*encoding=*/null);
     let close_output_on_finish = false;
     let pretty_indent = pretty_print ? 4 : null;
     let output_writer = new rbql_json.JsonWriter(output_stream, close_output_on_finish, 'utf-8', '\n', pretty_indent, wrap_output);
