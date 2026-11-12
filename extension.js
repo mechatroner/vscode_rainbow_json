@@ -557,14 +557,13 @@ async function update_query_history(query) {
 }
 
 
-
-// FIXME try to use the standard stream.writable instead.
+// In node there is no standard way to create a writable stream backed by a string, so we use this ad-hoc implementation.
 function PseudoWritable() {
     this.data_chunks = [];
     this.encoding = 'utf-8';
     this.unused_error_callback = null;
 
-    this.setDefaultEncoding = function(encoding) {  // FIXME do we need this?
+    this.setDefaultEncoding = function(encoding) {
         this.encoding = encoding;
     };
 
@@ -591,7 +590,6 @@ function read_user_init_code(rbql_init_source_path) {
 }
 
 
-// FIXME sync from RBQL main to get some bugfixes.
 async function rbql_query_web(query_text, input_document, unwrap_input, wrap_output, pretty_print, output_warnings) {
     let user_init_code = '';
     let default_init_source_path = path.join(os.homedir(), '.rbql_init_source.js');
@@ -648,7 +646,7 @@ async function run_rbql_query(webview, input_path, backend_language, rbql_query,
         try {
             log_wrapper.log_simple_event('using web mode');
             let result_content = await rbql_query_web(rbql_query, rbql_context.input_document, unwrap_input, wrap_output, pretty_print, warnings);
-            let output_doc_cfg = {content: result_content, language: 'json'}; // FIXME make sure language param is correct here.
+            let output_doc_cfg = {content: result_content, language: 'json'};
             extension_context.autodetection_temporarily_disabled_for_rbql = true;
             result_doc = await vscode.workspace.openTextDocument(output_doc_cfg);
             await send_report_to_webview(webview, null, null);
@@ -801,7 +799,7 @@ async function edit_rbql(integration_test_options=null) {
         client_html_template = await load_resource_file_universal('rbql_client.html');
     }
     rbql_preview_panel.webview.html = adjust_webview_paths(rbql_preview_panel, client_html_template, ['rbql_client.js']);
-    // FIXME at this point we need to parse the whole doc so that we can provide records when requested. We can also reparse it on every edit.
+    // A minor optimization here could be to pre-parse the records by calling the cache so we don't wait for them during the handshake, but it doesn't worth it.
     rbql_preview_panel.webview.onDidReceiveMessage(function(message) { handle_rbql_client_message(rbql_preview_panel.webview, message, integration_test_options); });
 }
 
