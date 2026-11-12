@@ -39,7 +39,7 @@ var _unit_test_last_rbql_report = null; // For unit tests only.
 
 
 const preview_window_size = 20;
-const is_web_ext = true; // FIXME get rid of this since it is always True.
+const is_web_ext = (os.homedir === undefined); // Runs as web extension in browser.
 
 // This `global_state` is persistent across VSCode restarts.
 let global_state = null;
@@ -586,14 +586,18 @@ function PseudoWritable() {
 }
 
 
+function read_user_init_code(rbql_init_source_path) {
+    return fs.readFileSync(rbql_init_source_path, 'utf-8');
+}
+
+
 // FIXME sync from RBQL main to get some bugfixes.
 async function rbql_query_web(query_text, input_document, unwrap_input, wrap_output, pretty_print, output_warnings) {
     let user_init_code = '';
-    // FIXME support user_init_code
-    //if (fs.existsSync(default_init_source_path)) {
-    //    let default_init_source_path = path.join(os.homedir(), '.rbql_init_source.js');
-    //    user_init_code = read_user_init_code(default_init_source_path);
-    //}
+    let default_init_source_path = path.join(os.homedir(), '.rbql_init_source.js');
+    if (!is_web_ext && fs.existsSync(default_init_source_path)) {
+        user_init_code = read_user_init_code(default_init_source_path);
+    }
     let join_tables_registry = null;
     let output_stream = new PseudoWritable();
     let input_stream = stream.Readable.from([input_document.getText()]);
@@ -637,8 +641,6 @@ async function run_rbql_query(webview, input_path, backend_language, rbql_query,
     log_wrapper.log_simple_event('start');
     last_rbql_queries.set(file_path_to_query_key(input_path), rbql_query);
 
-    //let output_path = is_web_ext ? null : path.join(get_dst_table_dir(input_path), get_dst_table_name(input_path, output_delim));
-
     if (backend_language == 'js') {
         log_wrapper.log_simple_event('using js backend');
         let warnings = [];
@@ -662,6 +664,11 @@ async function run_rbql_query(webview, input_path, backend_language, rbql_query,
             return;
         }
     } else {
+        // FIXME make sure it is not a web mode first, otherwise report an error.
+        if (orig_uri.scheme == 'file' && active_doc.isDirty) {
+            await send_report_to_webview(webview, 'Env error', 'Unable to run: input file has unsaved changes');
+            return;
+        }
         // FIXME support python backend.
     }
 }
@@ -690,7 +697,6 @@ async function handle_rbql_client_message(webview, message, integration_test_opt
             init_msg['last_query'] = last_rbql_queries.get(path_key);
         let history_list = get_from_global_state('rbql_query_history', []);
         init_msg['query_history'] = history_list;
-        init_msg['is_web_ext'] = is_web_ext;
         if (integration_test_options) {
             init_msg['integration_test_language'] = integration_test_options.rbql_backend;
             init_msg['integration_test_query'] = integration_test_options.rbql_query;
@@ -776,24 +782,9 @@ async function edit_rbql(integration_test_options=null) {
     if (!orig_uri)
         return;
     // For web orig_uri.scheme can have other valid values e.g. `vscode-test-web` when testing the browser integration.
-    if (orig_uri.scheme != 'file' && orig_uri.scheme != 'untitled' && !is_web_ext)
+    if (orig_uri.scheme != 'file' && orig_uri.scheme != 'untitled')
         return;
-    if (orig_uri.scheme == 'file' && active_doc.isDirty && !is_web_ext) {
-        show_single_line_error("Unable to run RBQL: file has unsaved changes");
-        return;
-    }
-    let input_path = null;
-    if (orig_uri.scheme == 'untitled' && !is_web_ext) {
-        // Scheme 'untitled' means that the document is a scratch buffer that hasn't been saved yet, see https://code.visualstudio.com/api/references/document-selector
-        let data = active_doc.getText();
-        let rnd_suffix = String(Math.floor(Math.random() * 1000000));
-        input_path = path.join(os.tmpdir(), `${scratch_buf_marker}_${rnd_suffix}.txt`);
-        // TODO consider adding username to the input_path and using chmod 600 on it.
-        fs.writeFileSync(input_path, data);
-    } else {
-        input_path = active_doc.fileName;
-    }
-
+    input_path = active_doc.fileName;
     if (!input_path) {
         show_single_line_error("Unable to run RBQL for this file");
         return;

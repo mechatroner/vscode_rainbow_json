@@ -12,8 +12,6 @@ var last_preview_message = null;
 
 var adjust_join_table_header_callback = null;
 
-var is_web_ext = null;
-
 var unwrap_input = false; // TODO make this flag a UI checkbox that re-draws preview on click
 
 function report_backend_language_change() {
@@ -227,7 +225,6 @@ function handle_message(msg_event) {
         if (message.hasOwnProperty('query_history')) {
             query_history = message['query_history'];
         }
-        is_web_ext = message['is_web_ext'];
         let pretty_print = message['pretty_print']; // FIXME pass from global state preferences
         let is_array = message['is_array'];
         last_preview_message = message;
