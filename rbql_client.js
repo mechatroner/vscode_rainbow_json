@@ -43,7 +43,8 @@ function add_header_row(table) {
 }
 
 
-function make_data_cell(cell_text) {
+function make_data_cell(json_obj) {
+    let cell_text = JSON.stringify(json_obj);
     let cell = document.createElement('td');
     let max_length = 1000;
     let add_ellipsis = false;
@@ -52,19 +53,17 @@ function make_data_cell(cell_text) {
          // FIXME test elipsis logic
         add_ellipsis = true;
     }
-    let field_rfc_lines = cell_text.split('\n');
-    for (let i = 0; i < field_rfc_lines.length; i++) {
-        let span = document.createElement('span');
-        span.textContent = field_rfc_lines[i];
-        cell.appendChild(span);
-        if (i + 1 < field_rfc_lines.length) {
-            let newline_span = document.createElement('span');
-            newline_span.textContent = '\\n';
-            newline_span.style.color = global_css_style.getPropertyValue('--vscode-editorWarning-foreground');
-            newline_span.title = 'new line';
-            cell.appendChild(newline_span);
-        }
-    }
+    let expand_button = document.createElement('button');
+    expand_button.textContent = '\u26F6'; // Expand character.
+    expand_button.className = 'expand_button';
+    cell.appendChild(expand_button);
+    let entry_div = document.createElement('div');
+    entry_div.className = 'json_container_inline';
+    let span = document.createElement('span');
+    span.textContent = cell_text;
+    cell.appendChild(entry_div);
+    entry_div.appendChild(span);
+    expand_button.addEventListener("click", () => { entry_div.className = 'json_container_expanded'; entry_div.textContent = 'hello world'; });
     if (add_ellipsis) {
         let ellipsis_span = document.createElement('span');
         ellipsis_span.style.color = global_css_style.getPropertyValue('--vscode-editorWarning-foreground');
@@ -112,7 +111,8 @@ function make_preview_table() {
         let row = document.createElement('tr');
         let NR = r + actual_start_record + 1;
         row.appendChild(make_nr_cell(String(NR)));
-        row.appendChild(make_data_cell(JSON.stringify(records[r])));
+        //row.appendChild(make_data_cell(JSON.stringify(records[r])));
+        row.appendChild(make_data_cell(records[r]));
         table.appendChild(row);
     }
 }
