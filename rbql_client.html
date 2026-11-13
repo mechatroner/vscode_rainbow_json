@@ -142,25 +142,6 @@ table th:first-child, table td:first-child {
 }
 
 
-#help_btn {
-    margin: 0px;
-    width: 28px;
-    background-color: var(--vscode-button-secondaryBackground);
-    color: var(--vscode-button-secondaryForeground);
-    height: 24px !important;
-    padding: 0px;
-    display: inline-block;
-    outline:none;
-    vertical-align:middle;
-    box-sizing: border-box;
-    border-width: 0px;
-}
-
-#help_btn:hover {
-    background-color: var(--vscode-button-secondaryHoverBackground);
-}
-
-
 #clear_history_btn {
     margin: 0px;
     background-color: var(--vscode-button-background);
@@ -214,8 +195,8 @@ table th:first-child, table td:first-child {
 
 
 #udf_button {
-    background-color: var(--vscode-button-secondaryBackground);
-    color: var(--vscode-button-secondaryForeground);
+    background-color: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
     font-size: 14px !important;
     border-width: 0px;
     height: 24px !important;
@@ -223,12 +204,13 @@ table th:first-child, table td:first-child {
     vertical-align:middle;
     padding: 0px;
     padding-left: 12px;
+    text-align: left;
     padding-right: 12px;
-    margin-top: 8px;
+    margin-top: 4px;
 }
 
 #udf_button:hover {
-    background-color: var(--vscode-button-secondaryHoverBackground);
+    background-color: var(--vscode-button-hoverBackground);
 }
 
 
@@ -373,11 +355,9 @@ table th:first-child, table td:first-child {
         <!-- Do not remove the weird comments below, we need them to avoid spaces between inline elements, see https://css-tricks.com/fighting-the-space-between-inline-block-elements/ -->
         <input type="text" id="rbql_input" placeholder="Example: SELECT a.foo, a.bar WHERE a.bar != 'foobar' ORDER BY a.foo LIMIT 10" autofocus><!--
         --><button id="toggle_history_btn" title="Query history">&#9650;</button><!--
-        --><button id="rbql_run_btn" title="Run query and open result set in a new tab">Run</button><!--
-        --><button id="help_btn" title="Help">?</button>
+        --><button id="rbql_run_btn" title="Run query and open result set in a new tab">Run</button>
     </div>
-    <h3 style="margin-bottom: 6px; margin-top: 10px;">&#9881; Query settings</h3>
-    <div style="margin-left: 30px;">
+    <div style="margin-top: 10px;">
         <div id="pretty_print_section">
             <label style="word-wrap:break-word" title="Adds extra whitespaces for each nested level"><input class="checkbox_input" id="pretty_print" type="checkbox"/>Pretty print</label>
         </div>
@@ -396,6 +376,9 @@ table th:first-child, table td:first-child {
         <div>
             <button id="udf_button" title="Edit UDF (User Defined Functions) - will open a new tab with UDF file">Edit UDF...</button>
         </div>
+    </div>
+    <div style="margin-top: 10px;">
+        <a href="https://github.com/mechatroner/RBQL">RBQL Help: Readme reference on github</a>
     </div>
 </div>
 
