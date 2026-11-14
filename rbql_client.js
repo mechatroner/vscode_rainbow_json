@@ -43,40 +43,53 @@ function add_header_row(table) {
 }
 
 
-function format_row_pretty(row_div, json_obj) {
+function format_row_pretty(expand_button, row_div, json_obj) {
     remove_children(row_div)
+    expand_button.textContent = '\u25B2'; // Up Triangle char
     row_div.className = 'json_container_expanded';
     row_div.textContent = JSON.stringify(json_obj, null, 4); 
 }
 
-function make_data_cell(json_obj) {
-    let cell_text = JSON.stringify(json_obj);
-    let cell = document.createElement('td');
+function format_row_inline(expand_button, row_div, json_obj) {
+    remove_children(row_div)
+    expand_button.textContent = '\u25BC'; // Down Triangle char
+    row_div.className = 'json_container_inline';
     let max_length = 1000;
     let add_ellipsis = false;
+    let cell_text = JSON.stringify(json_obj);
     if (cell_text.length > max_length) {
         cell_text = cell_text.substr(0, max_length);
-         // FIXME test elipsis logic
         add_ellipsis = true;
     }
-    let expand_button = document.createElement('button');
-    expand_button.textContent = '\u26F6'; // Expand character.
-    expand_button.className = 'expand_button';
-    cell.appendChild(expand_button);
-    let entry_div = document.createElement('div');
-    entry_div.className = 'json_container_inline';
-    cell.appendChild(entry_div);
     let span = document.createElement('span');
     span.textContent = cell_text;
-    entry_div.appendChild(span);
-    expand_button.addEventListener("click", () => { format_row_pretty(entry_div, json_obj); });
+    row_div.appendChild(span);
     if (add_ellipsis) {
         let ellipsis_span = document.createElement('span');
         ellipsis_span.style.color = global_css_style.getPropertyValue('--vscode-editorWarning-foreground');
         ellipsis_span.textContent = ' ...';
         ellipsis_span.title = 'value too long to display';
-        cell.appendChild(ellipsis_span);
+        row_div.appendChild(ellipsis_span);
     }
+}
+
+function toggle_row_pretty_inline(expand_button, row_div, json_obj) {
+    if (expand_button.textContent == '\u25BC' /* Down triangle */) {
+        format_row_pretty(expand_button, row_div, json_obj);
+    } else {
+        format_row_inline(expand_button, row_div, json_obj);
+    }
+}
+
+function make_data_cell(json_obj) {
+    let cell = document.createElement('td');
+    let expand_button = document.createElement('button');
+    expand_button.className = 'expand_button';
+    cell.appendChild(expand_button);
+    let entry_div = document.createElement('div');
+    cell.appendChild(entry_div);
+    format_row_inline(expand_button, entry_div, json_obj);
+    expand_button.addEventListener("click", () => { toggle_row_pretty_inline(expand_button, entry_div, json_obj); });
     return cell;
 }
 
@@ -117,7 +130,6 @@ function make_preview_table() {
         let row = document.createElement('tr');
         let NR = r + actual_start_record + 1;
         row.appendChild(make_nr_cell(String(NR)));
-        //row.appendChild(make_data_cell(JSON.stringify(records[r])));
         row.appendChild(make_data_cell(records[r]));
         table.appendChild(row);
     }
