@@ -43,6 +43,12 @@ function add_header_row(table) {
 }
 
 
+function format_row_pretty(row_div, json_obj) {
+    remove_children(row_div)
+    row_div.className = 'json_container_expanded';
+    row_div.textContent = JSON.stringify(json_obj, null, 4); 
+}
+
 function make_data_cell(json_obj) {
     let cell_text = JSON.stringify(json_obj);
     let cell = document.createElement('td');
@@ -59,11 +65,11 @@ function make_data_cell(json_obj) {
     cell.appendChild(expand_button);
     let entry_div = document.createElement('div');
     entry_div.className = 'json_container_inline';
+    cell.appendChild(entry_div);
     let span = document.createElement('span');
     span.textContent = cell_text;
-    cell.appendChild(entry_div);
     entry_div.appendChild(span);
-    expand_button.addEventListener("click", () => { entry_div.className = 'json_container_expanded'; entry_div.textContent = 'hello world'; });
+    expand_button.addEventListener("click", () => { format_row_pretty(entry_div, json_obj); });
     if (add_ellipsis) {
         let ellipsis_span = document.createElement('span');
         ellipsis_span.style.color = global_css_style.getPropertyValue('--vscode-editorWarning-foreground');
